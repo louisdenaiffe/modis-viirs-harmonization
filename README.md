@@ -6,8 +6,10 @@ country, any mix of countries, or the whole globe, and for any years.
 
 The calibration is regional. A Poisson GLM uses MODIS-side fire characteristics (FRP per
 detection, density, view angle, Terra/Aqua mix) and adds a shrunken regional correction.
-Tested on 12 countries across all major fire regimes, it keeps annual totals within ±20 % in
-countries it never saw, and within ±12 % in an end-to-end 2019 back-cast. See `METHOD.md`.
+Recalibrated on all 236 FIRMS countries, 2012-2024 (`outputs_full/`), the recommended product
+is fire cell-days with `glm_regional`. For country-years with ≥ 10 000 VIIRS detections, the
+p90 of the annual-total error is 23 % in countries the model never saw and 14 % in held-out
+years of seen countries, which is the 2000-2011 back-cast case. See `METHOD.md` §6.
 
 ## Run
 
@@ -47,6 +49,10 @@ curl -O $B/viirs-snpp/2019/viirs-snpp_2019_Brazil.csv
 
 - `SCHEMA.md`: the data contract.
 - `METHOD.md`: choices, results and limitations.
+- Global scale, in parts (`METHOD.md` §9): `--paired-only` per half or year, then
+  `--from-paired a.parquet b.parquet ...` to calibrate and validate on the union, with
+  `--jobs N` for parallel folds. `python -m harmonize.crosstest` fits on one part and scores
+  another.
 - Options: `--cell-size 0.25`, `--time-step month|day`, `--keep-types 0`,
   `--min-confidence nominal`, `--points-format parquet|csv|both`, `--skip-validation`
   (much faster on very large inputs).

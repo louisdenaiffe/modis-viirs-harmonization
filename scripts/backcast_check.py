@@ -59,8 +59,9 @@ def terra_dispatch(coef, data_dir, out):
         warnings.simplefilter("ignore")
         h_real = build_harmonized(sub, coef, cfg, coverage=cov)
         h_fallback = build_harmonized(sub, no_terra, cfg, coverage=cov)
-    a = h_real[h_real["daynight"] == "ALL"]
-    b = h_fallback[h_fallback["daynight"] == "ALL"]
+    # whole months only (Jan 2000 - Jun 2002), to compare with the pipeline's own table
+    a = h_real[(h_real["daynight"] == "ALL") & (h_real["period"].astype(str) < "2002-07")]
+    b = h_fallback[(h_fallback["daynight"] == "ALL") & (h_fallback["period"].astype(str) < "2002-07")]
     return tab, dict(metric=coef["recommended"]["metric"], model=coef["recommended"]["model"],
                      terra_only_points=int(len(sub)),
                      raw_modis=float(a["modis_raw"].sum()),

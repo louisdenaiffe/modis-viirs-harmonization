@@ -15,3 +15,7 @@ data_A/
 data_B/
 data_backcast/
 runs/
+outputs_full/**/monthly_oof.csv
+outputs_full/**/domain_scores.csv
+outputs_full/drift/drift_lyo.csv
+outputs_full/drift/drift_lyo_terra_aqua.csv

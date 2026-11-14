@@ -1,0 +1,7 @@
+metric,fire_cell_days
+model,glm_regional
+terra_only_points,1780381
+raw_modis,686274.0
+calibrated_with_terra_entries,2902138.6125273295
+calibrated_with_modis_all_fallback,1254590.570608063
+pipeline_harmonized_2000_to_2002_06,2902138.6125273295

@@ -1,0 +1,11 @@
+domain,year,regime,viirs_detections,obs_total,pred_total,bias_pct,r2_monthly
+Djibouti,2016,savanna,1.0,1.0,28.0,2699.9,-175.9
+Djibouti,2015,savanna,1.0,1.0,26.4,2541.3,-839.9
+Vanuatu,2012,savanna,88.0,29.0,285.3,884.0,-137.0
+Reunion,2024,savanna,1.0,1.0,8.9,789.7,-61.7
+Guadeloupe,2021,tropical_forest,1.0,1.0,6.7,568.0,-33.2
+Martinique,2014,tropical_forest,6.0,2.0,12.5,523.1,-40.2
+Tonga,2013,tropical_forest,9.0,7.0,39.9,469.8,-40.9
+Mayotte,2013,savanna,3.0,1.0,5.6,457.7,
+Falkland_Islands,2021,tropical_forest,42.0,2.0,11.1,454.5,
+Djibouti,2013,savanna,4.0,4.0,21.6,439.8,-84.6
