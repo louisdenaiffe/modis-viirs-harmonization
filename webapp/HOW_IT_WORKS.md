@@ -88,9 +88,10 @@ rectangle's edge are downloaded and checked hotspot by hotspot. The result is ex
   added: the VIIRS-unit series times the selected area's MODIS/VIIRS ratio for each calendar
   month, measured over Feb 2012 – Oct 2026 (the whole world's ratio where the area has none).
   Checked on Brazil: within about 3% of the real MODIS counts every year, before and after
-  2012. To plug in the team's data, replace `modisEq()` in `app.js`. On the fire map the
-  switch changes the counts, not the picture: the conversion is a scale factor per place, and
-  the map's colours are relative to the busiest places of the month.
+  2012. To plug in the team's data, replace `modisEq()` in `app.js`. On the fire map each
+  cell is converted with its own 10-degree block's MODIS/VIIRS factor for that month, and
+  both units share one colour scale (taken from the VIIRS-unit map): in MODIS units the map
+  turns visibly dimmer, showing how much less the 1 km sensor detects, and where.
 
 Limits to be honest about: this is a statistical scaling of counts, not a physical model.
 It assumes the VIIRS/MODIS relationship of 2012-2025 also held in 2000-2011, and it does

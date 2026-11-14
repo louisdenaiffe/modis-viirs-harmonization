@@ -762,6 +762,17 @@ function worldFactors() {
   }
   return worldK;
 }
+// Per 10-degree block, for the fire map in MODIS units (same filler method, block by block).
+const blockK = new Map();
+function blockFactors(blk) {
+  if (!blockK.has(blk.key)) blockK.set(blk.key, modisFactors(blk.mod, blk.harm, worldFactors()));
+  return blockK.get(blk.key);
+}
+const blockAt = new Map();                           // "la_lo" -> block, for the world map cells
+function blockOf(x, y) {
+  if (!blockAt.size) for (const b of data.blockList) blockAt.set(b.key, b);
+  return blockAt.get(`${Math.floor(y / 10) * 10}_${Math.floor(x / 10) * 10}`);
+}
 function modisEq(out) {
   const k = modisFactors(out.modis, out.harm, worldFactors());
   out.vEq = out.harm;
@@ -846,13 +857,19 @@ function getHeat0(m) {
   }
   return heat0Cache.get(m);
 }
+// Each map cell keeps its VIIRS-unit weight (v) and its weight in the chosen units (w). In MODIS
+// units every cell is converted with its own 10-degree block's MODIS/VIIRS factor for the month.
 async function heatFeatures(m, blocks) {
-  const ix = data.index, feats = [];
-  const push = (x, y, w) => feats.push({ type: 'Feature', properties: { w }, geometry: { type: 'Point', coordinates: [x, y] } });
+  const ix = data.index, feats = [], moy = m % 12, modis = state.unit === 'mEq';
+  const factor = blk => (modis ? (blk ? blockFactors(blk)[moy] : worldFactors()[moy]) : 1);
+  const push = (x, y, v, k) => feats.push({ type: 'Feature', properties: { w: v * k, v }, geometry: { type: 'Point', coordinates: [x, y] } });
   if (!blocks) {
     const buf = await getHeat0(m);
     const u = new Uint16Array(buf), f = new Float32Array(buf);
-    for (let i = 0; i < f.length; i += 2) push((u[2 * i] + 0.5) * ix.heat0 - 180, (u[2 * i + 1] + 0.5) * ix.heat0 - 90, f[i + 1]);
+    for (let i = 0; i < f.length; i += 2) {
+      const x = (u[2 * i] + 0.5) * ix.heat0 - 180, y = (u[2 * i + 1] + 0.5) * ix.heat0 - 90;
+      push(x, y, f[i + 1], factor(blockOf(x, y)));
+    }
     return feats;
   }
   await pool(blocks, 6, async blk => {
@@ -860,9 +877,9 @@ async function heatFeatures(m, blocks) {
     if (!heat.heads.has(blk.key)) heat.heads.set(blk.key, fetchRange(url, 0, hl).then(b => new Uint32Array(b)));
     const offs = await heat.heads.get(blk.key);
     if (offs[m + 1] === offs[m]) return;
-    const dv = new DataView(await fetchRange(url, hl + offs[m] * 4, hl + offs[m + 1] * 4));
+    const dv = new DataView(await fetchRange(url, hl + offs[m] * 4, hl + offs[m + 1] * 4)), k = factor(blk);
     for (let o = 0; o < dv.byteLength; o += 4)
-      push(blk.lo + (dv.getUint8(o) + 0.5) * ix.heat1, blk.la + (dv.getUint8(o + 1) + 0.5) * ix.heat1, dv.getUint16(o + 2, true) / 8);
+      push(blk.lo + (dv.getUint8(o) + 0.5) * ix.heat1, blk.la + (dv.getUint8(o + 1) + 0.5) * ix.heat1, dv.getUint16(o + 2, true) / 8, k);
   });
   return feats;
 }
@@ -887,7 +904,9 @@ async function showHeat() {
     const p = blocks ? HEAT_PAINT.detail : HEAT_PAINT.world;
     // Strength relative to the busiest places this month (99th percentile), square-rooted so
     // medium activity still shows: quiet areas glow dark red, the busiest ones yellow.
-    const ws = feats.map(f => f.properties.w).sort((a, b) => a - b);
+    // The scale always comes from the VIIRS-unit weights, so switching to MODIS units shows how
+    // much less MODIS detects (and where) instead of rescaling it to look the same.
+    const ws = feats.map(f => f.properties.v).sort((a, b) => a - b);
     // While the animation plays, one fixed scale for every month, so quiet months look
     // quiet and big fire seasons stand out; otherwise each month uses its own scale.
     const p99 = play.on && play.scale && !blocks ? play.scale : (ws.length ? ws[Math.floor(ws.length * 0.99)] || 1 : 1);
