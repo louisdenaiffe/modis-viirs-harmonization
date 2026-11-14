@@ -86,7 +86,7 @@ not correct for MODIS sensor ageing or for individual satellite outages.
 - **Calendar:** years as rows, months as columns. In the **Harmonized** view the colour runs
   from dark red (few hotspots) through orange to yellow (many), on a log scale.
 - **Raw view:** the colour tells you which satellite the number comes from, the shade how
-  many hotspots. Purple shades = MODIS (before February 2012), teal shades = VIIRS (from
+  many hotspots. Brown shades = MODIS (before February 2012), pastel green shades = VIIRS (from
   February 2012), darker = fewer, lighter = more, on the same scale for both.
 - **Anomaly view:** each month compared with the median of the same month across the
   chosen years. Blue = below normal, grey = normal, red = above normal.

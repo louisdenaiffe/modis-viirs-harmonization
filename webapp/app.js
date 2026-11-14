@@ -778,10 +778,10 @@ const SEQ = ['#4a0d06', '#8a1609', '#c4240d', '#e8471a', '#f37a22', '#f9a72f', '
 const textOn = rgb => { const [r, g, b] = rgb.match(/\d+/g).map(Number); return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#0b0b0b' : '#f0efec'; };
 const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const mix = (a, b, t) => { const A = hex(a), B = hex(b); return 'rgb(' + A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',') + ')'; };
-// Raw view: the colour says which satellite the number comes from (purple = MODIS, teal = VIIRS)
+// Raw view: the colour says which satellite the number comes from (brown = MODIS, green = VIIRS)
 // and the shade says how many hotspots, dark (few) to light (many), on the same log scale.
-const MODIS_SEQ = ['#1d0f35', '#3a1d6e', '#5a2fa3', '#7c4dd0', '#9d78e3', '#c0a5f2', '#e2d3fb'];
-const VIIRS_SEQ = ['#042b2f', '#094d55', '#0e767f', '#16a0a3', '#3cc4bb', '#7fe0cf', '#c6f6e9'];
+const MODIS_SEQ = ['#2b1a10', '#4a2f1d', '#6e4629', '#946238', '#b98550', '#d8ab79', '#efd5b0'];
+const VIIRS_SEQ = ['#1f3a2c', '#38604b', '#578b70', '#7db292', '#a3cfaa', '#c8e7c3', '#e7f6dc'];
 function seqColor(t, ramp = SEQ) {
   const x = Math.max(0, Math.min(1, t)) * (ramp.length - 1), i = Math.min(ramp.length - 2, Math.floor(x));
   return mix(ramp[i], ramp[i + 1], x - i);
@@ -950,7 +950,7 @@ function render() {
 
   $('modeNote').textContent = harm
     ? 'Harmonized: MODIS years (before Feb 2012) are scaled to what VIIRS would have detected, so every year is comparable.'
-    : 'Raw: MODIS counts before Feb 2012, VIIRS counts after, with no correction. The jump in 2012 is the sensor change, not more fire. Purple = MODIS, teal = VIIRS; darker = fewer hotspots, lighter = more.';
+    : 'Raw: MODIS counts before Feb 2012, VIIRS counts after, with no correction. The jump in 2012 is the sensor change, not more fire. Brown = MODIS, green = VIIRS; darker = fewer hotspots, lighter = more.';
 
   // --- headline figures ---
   const k = $('kpis'); k.textContent = '';
@@ -1020,7 +1020,7 @@ function render() {
       const bar2 = el('i'), dot = (c, t) => el('b', { textContent: t, style: `color:${c};font-weight:600` });
       bar.style.background = `linear-gradient(90deg,${MODIS_SEQ.join(',')})`;
       bar2.style.background = `linear-gradient(90deg,${VIIRS_SEQ.join(',')})`;
-      ramp.append(compact(md.min), dot('#9d78e3', 'MODIS'), bar, dot('#3cc4bb', 'VIIRS'), bar2, compact(md.max) + ' (log scale)');
+      ramp.append(compact(md.min), dot('#b98550', 'MODIS'), bar, dot('#a3cfaa', 'VIIRS'), bar2, compact(md.max) + ' (log scale)');
     }
   }
   $('calNote').textContent = (anom ? 'Each month is compared with the median of the same month over ' + rangeLabel() + '. ' : '') +
