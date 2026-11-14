@@ -323,9 +323,54 @@ async function selectCountryAt(ll) {
 // ground they fade away.
 (function satellites() {
   const cv = $('sats'), ctx = cv.getContext('2d');
+  // Two vector drawings in the style of NASA's Earth-observing satellites, seen from above,
+  // flying toward +x: a Terra/Aqua-like one (gold thermal foil, one large solar wing, dish
+  // antenna) and a Suomi NPP-like one (white body, black radiators, three-panel solar wing).
+  const DEFS = `<defs>
+    <linearGradient id="foil" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbe7a1"/><stop offset=".3" stop-color="#d6a33a"/><stop offset=".55" stop-color="#f4d47c"/><stop offset=".8" stop-color="#b8862b"/><stop offset="1" stop-color="#e9c35c"/></linearGradient>
+    <linearGradient id="cell" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#40669f"/><stop offset=".45" stop-color="#18295a"/><stop offset="1" stop-color="#2c4a86"/></linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6f8fa"/><stop offset=".55" stop-color="#bcc3cb"/><stop offset="1" stop-color="#7c858f"/></linearGradient>
+    <linearGradient id="white" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#dfe4e9"/><stop offset="1" stop-color="#a9b1ba"/></linearGradient>
+    <radialGradient id="dish" cx=".38" cy=".35" r=".75"><stop offset="0" stop-color="#ffffff"/><stop offset=".65" stop-color="#cfd5db"/><stop offset="1" stop-color="#868f99"/></radialGradient>
+    <pattern id="grid" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="none" stroke="#9cbcf0" stroke-opacity=".38" stroke-width=".5"/></pattern>
+  </defs>`;
+  const svgSat = body => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200" width="600" height="600">${DEFS}${body}</svg>`;
+  const wing = (x, y, w, h) => `<rect x="${x - 2}" y="${y - 2}" width="${w + 4}" height="${h + 4}" rx="1.5" fill="#c6ccd3" stroke="#6f7881" stroke-width=".6"/>` +
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#cell)"/><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#grid)"/>` +
+    `<path d="M${x} ${y} h${w} L${x} ${y + h * 0.6} Z" fill="#ffffff" opacity=".09"/>`;
+  const SPRITES = [svgSat(`
+    <rect x="-2" y="-44" width="4" height="30" fill="url(#metal)"/>
+    ${wing(-30, -96, 60, 52)}
+    <line x1="0" y1="-96" x2="0" y2="-44" stroke="#c6ccd3" stroke-width="1.4"/><line x1="-30" y1="-70" x2="30" y2="-70" stroke="#c6ccd3" stroke-width="1.4"/>
+    <rect x="-36" y="-16" width="72" height="40" rx="2" fill="url(#foil)" stroke="#7a5516" stroke-width=".8"/>
+    <path d="M-32 -9 l10 4 l6 -3 l12 6 l9 -4 l11 5 l12 -3 l6 2 M-33 4 l8 -3 l11 6 l7 -2 l13 5 l10 -4 l12 3 M-32 16 l12 -4 l9 5 l10 -3 l11 4 l14 -3" fill="none" stroke="#fff5cc" stroke-opacity=".55" stroke-width=".7"/>
+    <path d="M-36 -16 h72 l-6 5 h-60 Z" fill="#ffffff" opacity=".18"/>
+    <rect x="22" y="-12" width="24" height="18" rx="1" fill="url(#metal)" stroke="#5b636b" stroke-width=".6"/>
+    <circle cx="34" cy="-3" r="4.6" fill="#15181d" stroke="#a2aab3" stroke-width=".9"/><circle cx="32.8" cy="-4.2" r="1.2" fill="#6f8db8"/>
+    <rect x="-16" y="-25" width="20" height="10" fill="url(#metal)" stroke="#5b636b" stroke-width=".6"/>
+    <rect x="-12" y="-23" width="5" height="6" fill="#2b3036"/>
+    <rect x="8" y="23" width="18" height="8" fill="url(#white)" stroke="#5b636b" stroke-width=".6"/>
+    <rect x="-32" y="23" width="28" height="6" fill="url(#white)" stroke="#87909a" stroke-width=".5"/>
+    <line x1="-26" y1="26" x2="-42" y2="50" stroke="#b9c0c8" stroke-width="2.2"/>
+    <g transform="rotate(-30 -46 56)"><ellipse cx="-46" cy="56" rx="15" ry="8.5" fill="url(#dish)" stroke="#78818b" stroke-width=".8"/><ellipse cx="-46" cy="56" rx="9" ry="5" fill="none" stroke="#9aa3ad" stroke-width=".5"/></g>
+    <circle cx="-46" cy="56" r="1.8" fill="#59616a"/>`),
+  svgSat(`
+    <rect x="-2" y="14" width="4" height="22" fill="url(#metal)"/>
+    ${wing(-22, 36, 44, 18)}${wing(-22, 57, 44, 18)}${wing(-22, 78, 44, 18)}
+    <rect x="-28" y="-28" width="56" height="44" rx="2" fill="url(#white)" stroke="#6f7881" stroke-width=".8"/>
+    <rect x="-25" y="-25" width="15" height="38" fill="#1d2127"/><path d="M-25 -25 h15 l-15 20 Z" fill="#ffffff" opacity=".07"/>
+    <rect x="-7" y="-25" width="10" height="38" fill="#2a2f36"/>
+    <rect x="6" y="-25" width="19" height="17" fill="url(#foil)" stroke="#7a5516" stroke-width=".6"/>
+    <path d="M7 -21 l5 2 l4 -2 l5 3 M7 -14 l6 -2 l5 3 l5 -1" fill="none" stroke="#fff5cc" stroke-opacity=".55" stroke-width=".6"/>
+    <rect x="26" y="-10" width="18" height="16" rx="1" fill="url(#metal)" stroke="#5b636b" stroke-width=".6"/>
+    <rect x="36" y="-6" width="6" height="8" fill="#15181d"/>
+    <circle cx="10" cy="4" r="8" fill="url(#metal)" stroke="#5b636b" stroke-width=".6"/><circle cx="10" cy="4" r="4.2" fill="#2b3036"/>
+    <line x1="-28" y1="-26" x2="-38" y2="-38" stroke="#b9c0c8" stroke-width="1.4"/><circle cx="-39" cy="-39" r="3" fill="url(#dish)" stroke="#78818b" stroke-width=".5"/>
+    <rect x="-20" y="-36" width="12" height="8" fill="url(#metal)" stroke="#5b636b" stroke-width=".5"/>`)
+  ].map(svg => { const im = new Image(); im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); return im; });
   const ORBITS = [
-    { r: 1.16, tilt: 62, node: -25, period: 38, dir: 1, body: '#e8c76a' },
-    { r: 1.30, tilt: 28, node: 40, period: 54, dir: -1, body: '#d9dde3' }
+    { r: 1.16, tilt: 62, node: -25, period: 38, dir: 1, img: 0 },
+    { r: 1.30, tilt: 28, node: 40, period: 54, dir: -1, img: 1 }
   ].map(o => ({ ...o, ci: Math.cos(o.tilt * DEG), si: Math.sin(o.tilt * DEG), cn: Math.cos(o.node * DEG), sn: Math.sin(o.node * DEG) }));
   // Position on an orbit at angle a, in globe radii: x right, y up, z toward the viewer.
   const at = (o, a) => {
@@ -350,31 +395,17 @@ async function selectCountryAt(ll) {
     const scr = p => [cx + p[0] * R, cy - p[1] * R];
     ctx.globalAlpha = alpha;
     for (const o of ORBITS) {
-      // faint orbit line, front part brighter, hidden part skipped
-      ctx.lineWidth = 1 * d;
-      for (let i = 0; i < 120; i++) {
-        const a = at(o, i / 120 * 2 * Math.PI), b = at(o, (i + 1) / 120 * 2 * Math.PI);
-        if (hidden(a) || hidden(b)) continue;
-        ctx.strokeStyle = a[2] >= 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)';
-        const [x1, y1] = scr(a), [x2, y2] = scr(b);
-        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-      }
       const ang = o.dir * now / 1000 / o.period * 2 * Math.PI, p = at(o, ang);
       if (hidden(p)) continue;
       const [x, y] = scr(p), [xn, yn] = scr(at(o, ang + o.dir * 0.02));
-      const s = Math.max(7, Math.min(16, R / d / 26)) * d * (p[2] >= 0 ? 1 : 0.8);
+      const im = SPRITES[o.img];
+      if (!im.complete || !im.naturalWidth) continue;
+      // About a quarter of the globe's radius (the drawing fills about half its square), and a little smaller and dimmer behind it.
+      const back = p[2] < 0, w = Math.max(48, Math.min(110, R / d / 4.3)) * d * (back ? 0.85 : 1);
       ctx.save();
+      ctx.globalAlpha = alpha * (back ? 0.75 : 1);
       ctx.translate(x, y); ctx.rotate(Math.atan2(yn - y, xn - x));
-      // solar panels (blue, with cell lines) on both sides of the body
-      for (const side of [-1, 1]) {
-        ctx.fillStyle = '#2f5fa8'; ctx.fillRect(-s * 0.55, side * s * 0.7, s * 1.1, side * s * 1.6);
-        ctx.strokeStyle = 'rgba(170,200,255,0.55)'; ctx.lineWidth = 0.6 * d;
-        for (let k = 1; k < 4; k++) { const yy = side * s * (0.7 + 0.4 * k); ctx.beginPath(); ctx.moveTo(-s * 0.55, yy); ctx.lineTo(s * 0.55, yy); ctx.stroke(); }
-        ctx.strokeStyle = '#9aa3ad'; ctx.lineWidth = 0.8 * d;
-        ctx.beginPath(); ctx.moveTo(0, side * s * 0.35); ctx.lineTo(0, side * s * 0.7); ctx.stroke();
-      }
-      ctx.fillStyle = o.body; ctx.fillRect(-s * 0.4, -s * 0.35, s * 0.8, s * 0.7);
-      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(s * 0.45, 0, s * 0.12, 0, 6.2832); ctx.fill();
+      ctx.drawImage(im, -w / 2, -w / 2, w, w);
       ctx.restore();
     }
     ctx.globalAlpha = 1;
@@ -863,10 +894,10 @@ const SEQ = ['#4a0d06', '#8a1609', '#c4240d', '#e8471a', '#f37a22', '#f9a72f', '
 const textOn = rgb => { const [r, g, b] = rgb.match(/\d+/g).map(Number); return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#0b0b0b' : '#f0efec'; };
 const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const mix = (a, b, t) => { const A = hex(a), B = hex(b); return 'rgb(' + A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',') + ')'; };
-// Raw view: the colour says which satellite the number comes from (brown = MODIS, green = VIIRS)
+// Raw view: the colour says which satellite the number comes from (green = MODIS, blue = VIIRS)
 // and the shade says how many hotspots, dark (few) to light (many), on the same log scale.
-const MODIS_SEQ = ['#2b1a10', '#4a2f1d', '#6e4629', '#946238', '#b98550', '#d8ab79', '#efd5b0'];
-const VIIRS_SEQ = ['#1f3a2c', '#38604b', '#578b70', '#7db292', '#a3cfaa', '#c8e7c3', '#e7f6dc'];
+const MODIS_SEQ = ['#56663a', '#677a44', '#7a8e51', '#8fa364', '#a8b97f', '#c3d0a1', '#dde5c6'];
+const VIIRS_SEQ = ['#44707a', '#52818b', '#62929c', '#77a5ae', '#91b9c1', '#afcdd3', '#d0e3e7'];
 function seqColor(t, ramp = SEQ) {
   const x = Math.max(0, Math.min(1, t)) * (ramp.length - 1), i = Math.min(ramp.length - 2, Math.floor(x));
   return mix(ramp[i], ramp[i + 1], x - i);
@@ -1010,7 +1041,7 @@ function render() {
 
   $('modeNote').textContent = harm
     ? 'Harmonized: MODIS years (before Feb 2012) are scaled to what VIIRS would have detected, so every year is comparable.'
-    : 'Raw: MODIS counts before Feb 2012, VIIRS counts after, with no correction. The jump in 2012 is the sensor change, not more fire. Brown = MODIS, green = VIIRS; darker = fewer hotspots, lighter = more.';
+    : 'Raw: MODIS counts before Feb 2012, VIIRS counts after, with no correction. The jump in 2012 is the sensor change, not more fire. Green = MODIS, blue = VIIRS; darker = fewer hotspots, lighter = more.';
 
   // --- headline figures ---
   const k = $('kpis'); k.textContent = '';
@@ -1078,7 +1109,7 @@ function render() {
       const bar2 = el('i'), dot = (c, t) => el('b', { textContent: t, style: `color:${c};font-weight:600` });
       bar.style.background = `linear-gradient(90deg,${MODIS_SEQ.join(',')})`;
       bar2.style.background = `linear-gradient(90deg,${VIIRS_SEQ.join(',')})`;
-      ramp.append(compact(md.min), dot('#b98550', 'MODIS'), bar, dot('#a3cfaa', 'VIIRS'), bar2, compact(md.max) + ' (log scale)');
+      ramp.append(compact(md.min), dot('#a8b97f', 'MODIS'), bar, dot('#91b9c1', 'VIIRS'), bar2, compact(md.max) + ' (log scale)');
     }
   }
   $('calNote').textContent = (anom ? 'Each month is compared with the median of the same month over ' + rangeLabel() + '. ' : '') +

@@ -27,9 +27,11 @@ You spin a globe, draw a rectangle, and get a burning-activity calendar for that
 - **Esri World Imagery** provides the satellite pictures, down to about 0.6 m per pixel.
 - The stars are random dots drawn on a canvas behind the globe.
 - Zoom speed is set to about 3 times MapLibre's default.
-- **Two satellites** circle the globe on tilted orbits (decoration, a nod to Terra/Aqua and
-  Suomi NPP). They are drawn on a see-through canvas above the map that ignores clicks, hide
-  behind the globe on its far side, and fade out when you zoom in close to the ground.
+- **Two satellites** circle the globe on tilted, invisible orbits: detailed vector drawings
+  in the style of Terra/Aqua (gold thermal foil, one large solar wing, dish antenna) and
+  Suomi NPP (white body, black radiators, three-panel solar wing), the satellites whose data
+  the app uses. They are drawn on a see-through canvas above the map that ignores clicks,
+  hide behind the globe on its far side, and fade out when you zoom in close to the ground.
 - The results panel is "frosted glass": semi-transparent with a blur of the globe behind it.
 
 ### 2. Selecting an area (`app.js` section 3)
@@ -90,7 +92,7 @@ not correct for MODIS sensor ageing or for individual satellite outages.
 - **Calendar:** years as rows, months as columns. In the **Harmonized** view the colour runs
   from dark red (few hotspots) through orange to yellow (many), on a log scale.
 - **Raw view:** the colour tells you which satellite the number comes from, the shade how
-  many hotspots. Brown shades = MODIS (before February 2012), pastel green shades = VIIRS (from
+  many hotspots. Olive green shades = MODIS (before February 2012), slate blue shades = VIIRS (from
   February 2012), darker = fewer, lighter = more, on the same scale for both.
 - **Anomaly view:** each month compared with the median of the same month across the
   chosen years. Blue = below normal, grey = normal, red = above normal.
