@@ -56,6 +56,9 @@
   #tools { position: fixed; z-index: 5; top: 16px; left: 16px; padding: 10px; display: flex; flex-direction: column;
     gap: 8px; width: min(400px, calc(100vw - 32px)); }
   #tools .hint { margin: 0; padding: 6px 4px 0; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  #tools .hint.desk { display: none; border-top: 0; padding-top: 3px; }
+  #tools .hint kbd { font: inherit; font-size: 11px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--text, #fff); background: rgba(255,255,255,.08); }
+  @media (min-width: 761px) and (hover: hover) and (pointer: fine) { #tools .hint.desk { display: block; } }
   #tools .row { display: flex; gap: 8px; align-items: center; }
   .brand { display: flex; align-items: baseline; gap: 10px; padding: 2px 4px 4px; border-bottom: 1px solid var(--border); margin-bottom: 2px; }
   .brand strong { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
@@ -266,6 +269,7 @@
     <label class="toggle"><input id="rotateChk" type="checkbox" checked> Auto-rotate</label>
   </div>
   <p class="hint">Search a country, or press Select and tap one, to see its fire record.</p>
+  <p class="hint desk">Hold <kbd>Shift</kbd> and drag to select an area, or <kbd>Shift</kbd> + click a country.</p>
 </div>
 <div id="readout" hidden></div>
 
