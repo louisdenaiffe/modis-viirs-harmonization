@@ -317,6 +317,71 @@ async function selectCountryAt(ll) {
   window.dispatchEvent(new CustomEvent('aoi-selected', { detail: window.fireGlobe.selection }));
 }
 
+/* ----- Two decorative satellites circling the globe ----- */
+// Drawn on a transparent canvas above the map (no clicks). Each flies a tilted circle a little
+// above the surface; on the far side of the globe it is hidden behind it. Zoomed in close to the
+// ground they fade away.
+(function satellites() {
+  const cv = $('sats'), ctx = cv.getContext('2d');
+  const ORBITS = [
+    { r: 1.16, tilt: 62, node: -25, period: 38, dir: 1, body: '#e8c76a' },
+    { r: 1.30, tilt: 28, node: 40, period: 54, dir: -1, body: '#d9dde3' }
+  ].map(o => ({ ...o, ci: Math.cos(o.tilt * DEG), si: Math.sin(o.tilt * DEG), cn: Math.cos(o.node * DEG), sn: Math.sin(o.node * DEG) }));
+  // Position on an orbit at angle a, in globe radii: x right, y up, z toward the viewer.
+  const at = (o, a) => {
+    const x = Math.cos(a) * o.r, y0 = Math.sin(a) * o.r, y = y0 * o.ci, z = y0 * o.si;
+    return [x * o.cn - y * o.sn, x * o.sn + y * o.cn, z];
+  };
+  const hidden = p => p[2] < 0 && p[0] * p[0] + p[1] * p[1] < 1;
+  function size() { const d = devicePixelRatio || 1; cv.width = innerWidth * d; cv.height = innerHeight * d; }
+  size(); addEventListener('resize', size);
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const d = devicePixelRatio || 1, z = map.getZoom(), alpha = Math.max(0, Math.min(1, (3.4 - z) / 0.9));
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    if (!alpha) return;
+    // Where the globe is on screen: its centre and radius, measured by projecting the view
+    // centre and a point 80 degrees east of it along the surface.
+    const c = map.getCenter(), lat = c.lat * DEG, dd = 80 * DEG;
+    const lat2 = Math.asin(Math.sin(lat) * Math.cos(dd)), lng2 = c.lng + Math.atan2(Math.sin(dd) * Math.cos(lat), Math.cos(dd) - Math.sin(lat) * Math.sin(lat2)) / DEG;
+    const p0 = map.project(c), p1 = map.project([lng2, lat2 / DEG]);
+    const R = Math.hypot(p1.x - p0.x, p1.y - p0.y) / Math.sin(dd) * d, cx = p0.x * d, cy = p0.y * d;
+    if (!(R > 0) || R > 4 * Math.max(cv.width, cv.height)) return;
+    const scr = p => [cx + p[0] * R, cy - p[1] * R];
+    ctx.globalAlpha = alpha;
+    for (const o of ORBITS) {
+      // faint orbit line, front part brighter, hidden part skipped
+      ctx.lineWidth = 1 * d;
+      for (let i = 0; i < 120; i++) {
+        const a = at(o, i / 120 * 2 * Math.PI), b = at(o, (i + 1) / 120 * 2 * Math.PI);
+        if (hidden(a) || hidden(b)) continue;
+        ctx.strokeStyle = a[2] >= 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)';
+        const [x1, y1] = scr(a), [x2, y2] = scr(b);
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      }
+      const ang = o.dir * now / 1000 / o.period * 2 * Math.PI, p = at(o, ang);
+      if (hidden(p)) continue;
+      const [x, y] = scr(p), [xn, yn] = scr(at(o, ang + o.dir * 0.02));
+      const s = Math.max(5, Math.min(11, R / d / 40)) * d * (p[2] >= 0 ? 1 : 0.8);
+      ctx.save();
+      ctx.translate(x, y); ctx.rotate(Math.atan2(yn - y, xn - x));
+      // solar panels (blue, with cell lines) on both sides of the body
+      for (const side of [-1, 1]) {
+        ctx.fillStyle = '#2f5fa8'; ctx.fillRect(-s * 0.55, side * s * 0.7, s * 1.1, side * s * 1.6);
+        ctx.strokeStyle = 'rgba(170,200,255,0.55)'; ctx.lineWidth = 0.6 * d;
+        for (let k = 1; k < 4; k++) { const yy = side * s * (0.7 + 0.4 * k); ctx.beginPath(); ctx.moveTo(-s * 0.55, yy); ctx.lineTo(s * 0.55, yy); ctx.stroke(); }
+        ctx.strokeStyle = '#9aa3ad'; ctx.lineWidth = 0.8 * d;
+        ctx.beginPath(); ctx.moveTo(0, side * s * 0.35); ctx.lineTo(0, side * s * 0.7); ctx.stroke();
+      }
+      ctx.fillStyle = o.body; ctx.fillRect(-s * 0.4, -s * 0.35, s * 0.8, s * 0.7);
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(s * 0.45, 0, s * 0.12, 0, 6.2832); ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+  map.once('load', () => requestAnimationFrame(frame));
+})();
+
 /* ----- Labels and borders toggle ----- */
 $('labelsChk').onchange = e => map.setLayoutProperty('labels', 'visibility', e.target.checked ? 'visible' : 'none');
 
@@ -938,33 +1003,6 @@ function el(tag, props = {}, ...kids) {
   return e;
 }
 
-// A few plain sentences: how the latest month and the latest full year compare with the past.
-const ordinal = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 >> 3) ^ 1 && n % 10 < 4 ? n % 10 : 0]);
-const vsNormal = p => Math.abs(p) < 10 ? 'about the same as' : Math.abs(p) >= 100 && p > 0 ? nf(Math.abs(p)) + '% above (more than double)' : nf(Math.abs(p)) + '% ' + (p > 0 ? 'above' : 'below');
-function renderCompare(md, harm) {
-  const box = $('compare'); box.textContent = '';
-  const add = t => box.append(el('p', { textContent: t }));
-  const c = md.latest;
-  if (!c) { $('compareSec').hidden = true; return; }
-  $('compareSec').hidden = false;
-  const moy = c.m % 12, y = 2000 + Math.floor(c.m / 12), name = MONTHS_LONG[moy] + ' ' + y, unit = harm ? 'hotspots (VIIRS-equivalent)' : 'hotspots';
-  if (c.anom === null) add(`${name} had ${nf(c.v)} ${unit}, in a month with normally none in the chosen dates.`);
-  else add(`${name} had ${nf(c.v)} ${unit}, ${vsNormal(c.anom)} the usual ${MONTHS_LONG[moy]} (median ${nf(md.med[moy])}).`);
-  const same = md.rows.map(r => r.cells[moy]).filter(x => x.exists && !x.partial);
-  if (same.length > 2) {
-    const rank = 1 + same.filter(x => x.v > c.v).length, others = same.filter(x => x.m !== c.m);
-    const near = others.reduce((a, x) => (Math.abs(x.v - c.v) < Math.abs(a.v - c.v) ? x : a));
-    add(`Of the ${same.length} ${MONTHS_LONG[moy]}s in the chosen dates, it ranks ${ordinal(rank)} (1st = the most hotspots). The closest earlier match is ${MONTHS_LONG[moy]} ${2000 + Math.floor(near.m / 12)} (${nf(near.v)}).`);
-  }
-  const full = md.rows.filter(r => r.complete);
-  if (full.length > 2) {
-    const last = full[full.length - 1], avg = full.reduce((a, r) => a + r.sum, 0) / full.length, p = (last.sum - avg) / avg * 100;
-    add(`The last full year, ${last.y}, had ${nf(last.sum)} ${unit}, ${vsNormal(p)} the average full year (${nf(avg)}).`);
-  }
-  if (!harm && md.rows.some(r => r.y < 2012) && c.m >= md.ix.viirsStart)
-    add('Note: in Raw view the 2012 sensor change inflates later years. Switch to Harmonized for a like-for-like comparison.');
-}
-
 function render() {
   if (!state.result) return;
   const md = state.model = buildModel(), harm = state.mode === 'harm', anom = state.view === 'anom';
@@ -988,8 +1026,6 @@ function render() {
       c.anom === null ? 'no fires normally seen in ' + MONTHS[moy]
         : pct(c.anom) + ' against the ' + MONTHS[moy] + ' median (' + nf(md.med[moy]) + ')');
   }
-
-  renderCompare(md, harm);
 
   // --- calendar table ---
   $('calTitle').textContent = anom ? 'Difference from the monthly median' : 'Hotspots per month';

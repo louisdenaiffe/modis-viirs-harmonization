@@ -22,7 +22,7 @@ git merge -q --ff-only "upstream/$BRANCH" 2>/dev/null || true   # pick up anythi
 
 rsync -a --delete \
   --exclude '.git' --exclude 'data/' --exclude '.firms_key' --exclude '.gitignore' \
-  --exclude '__pycache__/' --exclude '.DS_Store' \
+  --exclude '__pycache__/' --exclude '.DS_Store' --exclude '.wrangler/' \
   "$APP/" "$TEAM/webapp/"
 
 git add -A webapp
