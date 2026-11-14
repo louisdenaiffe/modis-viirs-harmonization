@@ -820,7 +820,8 @@ async function playScale() {
 function stopPlay() {
   play.on = false;
   clearTimeout(play.timer);
-  $('playBtn').innerHTML = ICON_PLAY + 'Play';
+  $('playBtn').innerHTML = ICON_PLAY + '<span class="lbl">Play</span>';
+  $('playBtn').setAttribute('aria-label', 'Play');
   $('playBtn').setAttribute('aria-pressed', 'false');
   heat.shown = '';
   showHeat();                                     // back to the month's own colour scale
@@ -830,7 +831,8 @@ async function startPlay() {
   let m = (+$('heatYear').value - 2000) * 12 + +$('heatMonth').value;
   if (m >= ix.lastMonth) m = ix.firstMonth;        // at the end: start again from the beginning
   play.on = true;
-  $('playBtn').innerHTML = ICON_PAUSE + 'Pause';
+  $('playBtn').innerHTML = ICON_PAUSE + '<span class="lbl">Pause</span>';
+  $('playBtn').setAttribute('aria-label', 'Pause');
   $('playBtn').setAttribute('aria-pressed', 'true');
   $('heatChk').checked = true;
   await playScale();

@@ -65,7 +65,13 @@
   #timebar .row label { color: var(--text-2); font-size: 13px; }
   #heatCaption { flex: 1; font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #playBtn { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; background: #f37a22; border-color: #f37a22; color: #1a1200; font-weight: 600; white-space: nowrap; }
+  /* Play: a round triangle button; pointing at it (or focusing it) slides the word open. */
+  #playBtn { display: inline-flex; align-items: center; justify-content: center; height: 32px; min-width: 32px;
+    padding: 0 10px; border-radius: 16px; background: #f37a22; border-color: #f37a22; color: #1a1200;
+    font-weight: 600; white-space: nowrap; transition: background 0.15s; }
+  #playBtn .lbl { display: inline-block; max-width: 0; margin-left: 0; opacity: 0; overflow: hidden;
+    transition: max-width 0.3s cubic-bezier(0.16, 1, 0.3, 1), margin-left 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s; }
+  #playBtn:hover .lbl, #playBtn:focus-visible .lbl { max-width: 64px; margin-left: 7px; opacity: 1; }
   #playBtn:hover { background: #f9a72f; }
   #heatYear { width: 78px; font-weight: 600; font-variant-numeric: tabular-nums; }
   #heatMonth { width: 100%; margin: 0; padding: 0; border: 0; background: transparent; accent-color: #f37a22;
@@ -204,7 +210,7 @@
 
 <div id="timebar">
   <div class="row">
-    <button id="playBtn" aria-pressed="false" title="Show the world's fire map month by month, from November 2000 to the latest month"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1v8l7-4z" fill="currentColor"/></svg>Play</button>
+    <button id="playBtn" aria-pressed="false" aria-label="Play" title="Show the world's fire map month by month, from November 2000 to the latest month"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1v8l7-4z" fill="currentColor"/></svg><span class="lbl">Play</span></button>
     <label class="toggle"><input id="heatChk" type="checkbox" checked> Fire map</label>
     <span id="heatCaption"></span>
     <label for="heatYear">Year</label>
