@@ -511,13 +511,40 @@ def _year_of(df: pd.DataFrame) -> np.ndarray:
     return pd.to_numeric(df["period"].astype(str).str[:4], errors="coerce").fillna(-1).astype("int64").to_numpy()
 
 
+MAX_LODO_DOMAINS = 30
+N_DOMAIN_FOLDS = 10
+DOMAIN_FOLD_SEED = 20240101
+
+
+def _domain_kfold(dom: np.ndarray, df: pd.DataFrame, k: int = N_DOMAIN_FOLDS,
+                  seed: int = DOMAIN_FOLD_SEED) -> np.ndarray:
+    """Group label per row: domains in ``k`` folds balanced by VIIRS detections (greedy,
+    seeded shuffle for ties). Kept local so calibration stays independent of validate.py."""
+    v = df["viirs_n_hotspots"].to_numpy(float) if "viirs_n_hotspots" in df else np.ones(len(df))
+    vol = pd.Series(v).groupby(dom).sum()
+    names = np.array(sorted(vol.index), dtype=object)
+    vals = vol.reindex(names).to_numpy(float)
+    perm = np.random.default_rng(seed).permutation(len(names))
+    order = perm[np.argsort(-vals[perm], kind="stable")]
+    load, cnt, fmap = np.zeros(k), np.zeros(k, np.int64), {}
+    for i in order:
+        f = int(np.lexsort((cnt, load))[0])
+        fmap[names[i]] = f"fold{f}"
+        load[f] += vals[i]
+        cnt[f] += 1
+    return pd.Series(dom).map(fmap).to_numpy(object)
+
+
 def _groups(df: pd.DataFrame, cfg: Config, holdout: str = "domain") -> tuple[np.ndarray, str]:
     """Hold-out groups: domains (countries) if >= 3, else 10-degree spatial blocks;
     ``holdout="year"`` gives leave-one-year-out instead."""
     if holdout == "year":
         return _year_of(df).astype(str).astype(object), "year"
     if "domain" in df.columns and df["domain"].nunique() >= 3:
-        return df["domain"].astype(str).to_numpy(), "domain"
+        dom = df["domain"].astype(str).to_numpy()
+        if df["domain"].nunique() > MAX_LODO_DOMAINS:   # ~200 countries: grouped K-fold
+            return _domain_kfold(dom, df), "domain_kfold"
+        return dom, "domain"
     k = _tile_key(df["cell_lat"].to_numpy(float), df["cell_lon"].to_numpy(float), 10.0)
     return np.array([_key_str(int(v)) if v >= 0 else "?" for v in k], dtype=object), "block10"
 
@@ -559,7 +586,7 @@ def stability_table(paired_by_source, cfg: Config, metrics=METRICS, models=MODEL
                             warnings.simplefilter("ignore")
                             prm = _fit_prepared(name, Ptr, metric, cfg, opts)
                             preds[name] = apply_model(prm, te_rows, metric)
-                    dom_te = dom[te] if gkind == "year" else np.full(te.sum(), g, dtype=object)
+                    dom_te = dom[te] if gkind in ("year", "domain_kfold") else np.full(te.sum(), g, dtype=object)
                     rep = pd.DataFrame({"d": dom_te, "y": yr_te}).groupby(["d", "y"], sort=True).indices
                     for (dv, yv), ix in rep.items():
                         V, M = float(y_te[ix].sum()), float(x_te[ix].sum())

@@ -10,3 +10,8 @@ outputs_global/*
 !outputs_global/plots/
 *.parquet
 .cache/
+data_raw/
+data_A/
+data_B/
+data_backcast/
+runs/

@@ -158,3 +158,85 @@ def test_run_validation_stub_smoke(monkeypatch, tmp_path):
     assert set(s["model"]) == {"raw_modis", "ratio_global", "ratio_regional"}
     assert (s["scheme"] == "leave_domain_out").all()
     assert s.loc[s.model == "raw_modis", "rank_overall"].isna().all()
+
+
+# ------------------------------------------------------------ grouped K-fold over countries
+def _many_domains(n=40, seed=3):
+    """n small domains with very unequal fire volume, one cell each."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for i in range(n):
+        vol = float(rng.integers(1, 1000))
+        for m in range(1, 13):
+            x = vol / 12
+            rows.append(dict(cell_id=f"c{i}", cell_lat=-60 + 3.0 * i, cell_lon=-170 + 8.0 * i,
+                             period=f"2019-{m:02d}", period_start=f"2019-{m:02d}-01",
+                             daynight="ALL", domain=f"D{i:02d}", modis_source="MODIS_ALL",
+                             modis_n_hotspots=x, viirs_n_hotspots=3 * x))
+    return pd.DataFrame(rows)
+
+
+def test_domain_kfold_partitions_without_leakage_and_balances_volume():
+    df = _many_domains()
+    fmap = V.domain_fold_map(V.domain_volume(df), 10)
+    assert sorted(set(fmap.values())) == list(range(10))
+    folds = make_folds(df, V.DOMAIN_KFOLD, domain_folds=fmap)
+    assert len(folds) == 10
+    stacked = np.vstack([m for _, m in folds])
+    assert (stacked.sum(axis=0) == 1).all()
+    g = df["domain"].to_numpy()
+    for _, test in folds:
+        assert not set(g[test]) & set(g[~test])
+    vol = V.domain_volume(df)
+    loads = pd.Series(fmap).map(lambda f: f).groupby(pd.Series(fmap)).apply(
+        lambda s: vol[s.index].sum())
+    # greedy LPT: no fold exceeds the mean by more than the largest single domain
+    assert loads.max() - loads.mean() <= vol.max()
+    assert loads.max() / loads.min() < 1.5
+
+
+def test_domain_kfold_is_deterministic_and_row_order_independent():
+    df = _many_domains()
+    a = V.domain_fold_map(V.domain_volume(df), 10)
+    b = V.domain_fold_map(V.domain_volume(df.sample(frac=1, random_state=5)), 10)
+    assert a == b
+    c = V.domain_fold_map(V.domain_volume(df), 10, seed=V.DOMAIN_FOLD_SEED + 1)
+    assert set(c) == set(a)   # another seed may move equal-volume ties, but still a partition
+
+
+def test_effective_schemes_swaps_lodo_for_kfold_above_threshold():
+    assert V.effective_schemes(SCHEMES, 12) == tuple(SCHEMES)
+    eff = V.effective_schemes(SCHEMES, 200)
+    assert "leave_domain_out" not in eff and eff[0] == V.DOMAIN_KFOLD
+
+
+def test_kfold_run_and_parallel_equals_serial(tmp_path):
+    df = _toy()
+    cfg = Config(out_dir=tmp_path)
+    kw = dict(models=["ratio_global"], metrics=("n_hotspots",), sources=("MODIS_ALL",),
+              daynights=("ALL",), verbose=False, max_lodo_domains=2, n_domain_folds=3)
+    serial = run_validation({"MODIS_ALL": df}, cfg, n_jobs=1, **kw)
+    par = run_validation({"MODIS_ALL": df}, cfg, n_jobs=3, **kw)
+    assert set(serial["scores"]["scheme"]) >= {V.DOMAIN_KFOLD}
+    assert "leave_domain_out" not in set(serial["scores"]["scheme"])
+    pd.testing.assert_frame_equal(serial["monthly_oof"], par["monthly_oof"])
+    assert (serial["summary"]["scheme"] == V.DOMAIN_KFOLD).all()
+
+
+def test_crosstest_scores_only_the_test_domains(tmp_path):
+    from harmonize.crosstest import cross_test
+    df = _toy()
+    tr, te = df[df["domain"] != "Gamma"], df[df["domain"] == "Gamma"]
+    kw = dict(models=["ratio_global"], metrics=("n_hotspots",), sources=("MODIS_ALL",),
+              daynights=("ALL",), verbose=False)
+    res = cross_test({"MODIS_ALL": tr}, {"MODIS_ALL": te}, Config(out_dir=tmp_path), "t", **kw)
+    ds = res["domain_scores"]
+    assert set(ds["domain"]) == {"Gamma"} and set(ds["scheme"]) == {"t"}
+    # ratio_global from Alpha (k=5) and Beta (k=3) under-predicts Gamma (k=8)
+    rg = ds[ds["model"] == "ratio_global"]
+    assert (rg["bias_pct"] < 0).all()
+    raw = ds[ds["model"] == "raw_modis"]
+    assert np.allclose(raw["bias_pct"], 100 * (1 / 8 - 1))
+    par = cross_test({"MODIS_ALL": tr}, {"MODIS_ALL": te}, Config(out_dir=tmp_path), "t",
+                     n_jobs=2, **kw)
+    pd.testing.assert_frame_equal(res["scores"], par["scores"])

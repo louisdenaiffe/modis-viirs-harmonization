@@ -10,6 +10,10 @@ the rows of every (modis_source, daynight) table):
 * ``leave_domain_out`` (primary) one fold per ``domain`` (country / file label). Every row
                        of the held-out domain is predicted by a model that never saw that
                        domain, i.e. transfer to an unseen region.
+* ``domain_kfold``     used instead of ``leave_domain_out`` when there are more than
+                       ``MAX_LODO_DOMAINS`` domains (a global run has ~200 countries): domains
+                       are grouped into ``N_DOMAIN_FOLDS`` folds balanced by fire volume (VIIRS
+                       detections), with a fixed seed. Still no domain on both sides of a fold.
 * ``spatial_block``    10 deg x 10 deg blocks, grouped K-fold (K = ``N_BLOCK_FOLDS``,
                        greedy size-balanced, deterministic). Transfer across space that
                        ignores political borders (a big country spans several blocks).
@@ -49,6 +53,8 @@ domain x year x month totals with ``np.bincount``. Nothing is subsampled.
 from __future__ import annotations
 
 import inspect
+import multiprocessing as mp
+import os
 import time
 import warnings
 from typing import Callable
@@ -63,6 +69,10 @@ BASELINE_RAW = "raw_modis"
 BASELINE_RATIO = "ratio_global"
 SCHEMES = ("leave_domain_out", "spatial_block", "leave_year_out", "lomo")
 PRIMARY_SCHEME = "leave_domain_out"
+DOMAIN_KFOLD = "domain_kfold"
+N_DOMAIN_FOLDS = 10
+DOMAIN_FOLD_SEED = 20240101
+MAX_LODO_DOMAINS = 30          # above this many domains leave_domain_out becomes domain_kfold
 BLOCK_DEG = 10.0
 N_BLOCK_FOLDS = 5
 # MODIS-side feature columns (paired table ``modis_<f>``) that a model may use at apply time
@@ -171,10 +181,64 @@ def _balanced_group_folds(groups: np.ndarray, k: int) -> np.ndarray:
     return pd.Series(groups).map(fold_of).to_numpy()
 
 
+def domain_volume(df: pd.DataFrame) -> pd.Series:
+    """Fire volume per domain: VIIRS detections (MODIS detections where a domain has no VIIRS)."""
+    dom = df["domain"].astype(str).to_numpy()
+    v = df["viirs_n_hotspots"].to_numpy(float) if "viirs_n_hotspots" in df else np.zeros(len(df))
+    m = df["modis_n_hotspots"].to_numpy(float) if "modis_n_hotspots" in df else np.zeros(len(df))
+    vol = pd.DataFrame({"d": dom, "v": v, "m": m}).groupby("d")[["v", "m"]].sum()
+    return vol["v"].where(vol["v"] > 0, vol["m"]).sort_index()
+
+
+def domain_fold_map(volume: pd.Series, k: int = N_DOMAIN_FOLDS,
+                    seed: int = DOMAIN_FOLD_SEED) -> dict[str, int]:
+    """Assign domains to ``k`` folds with balanced total fire volume.
+
+    The domains are shuffled with ``seed``, stably sorted by volume (largest first), and each
+    one goes to the fold with the smallest load (longest-processing-time greedy). Equal volumes
+    therefore land in seed-dependent but reproducible folds, and the result does not depend on
+    row order."""
+    vol = pd.Series(volume, dtype=float).fillna(0.0)
+    names = np.array(sorted(map(str, vol.index)), dtype=object)
+    vals = vol.reindex(names).to_numpy(float) if len(names) else np.zeros(0)
+    perm = np.random.default_rng(seed).permutation(len(names))
+    order = perm[np.argsort(-vals[perm], kind="stable")]
+    k = max(1, min(int(k), len(names)))
+    load = np.zeros(k)
+    count = np.zeros(k, np.int64)
+    out = {}
+    for i in order:
+        f = int(np.lexsort((count, load))[0])   # least volume, then fewest domains
+        out[str(names[i])] = f
+        load[f] += vals[i]
+        count[f] += 1
+    return out
+
+
 def make_folds(df: pd.DataFrame, scheme: str, n_block_folds: int = N_BLOCK_FOLDS,
-               block_deg: float = BLOCK_DEG) -> list[tuple[str, np.ndarray]]:
+               block_deg: float = BLOCK_DEG, domain_folds: dict[str, int] | None = None,
+               n_domain_folds: int = N_DOMAIN_FOLDS) -> list[tuple[str, np.ndarray]]:
     """Return [(fold_name, test_mask)]; train = ~test_mask. Test masks partition the rows.
-    Returns [] when the scheme is not applicable (fewer than 2 groups)."""
+    Returns [] when the scheme is not applicable (fewer than 2 groups).
+
+    ``domain_kfold`` uses ``domain_folds`` (domain -> fold) when given, so every
+    (modis_source, daynight) table shares the same assignment; otherwise it is computed
+    from this table's fire volume. Domains missing from the map get their own greedy
+    assignment from this table."""
+    if scheme == DOMAIN_KFOLD:
+        g = df["domain"].astype(str).to_numpy()
+        fmap = dict(domain_folds) if domain_folds is not None else {}
+        missing = sorted(set(np.unique(g)) - set(fmap))
+        if missing:
+            k = max(fmap.values()) + 1 if fmap else n_domain_folds
+            vol = domain_volume(df)
+            extra = domain_fold_map(vol[vol.index.isin(missing)], k)
+            fmap.update(extra)
+        f = pd.Series(g).map(fmap).to_numpy(np.int64)
+        u = np.unique(f)
+        if len(u) < 2:
+            return []
+        return [(f"domfold{k}", f == k) for k in u]
     if scheme == "leave_domain_out":
         g = df["domain"].astype(str).to_numpy()
     elif scheme == "leave_year_out":
@@ -259,18 +323,74 @@ def _group_codes(d: pd.DataFrame) -> tuple[np.ndarray, pd.DataFrame]:
     return codes, uniq
 
 
+# Context shared with forked fold workers (copy-on-write; never pickled).
+_CTX: dict = {}
+
+
+def _fold_job(i: int):
+    """Fit every metric x model on fold ``i``'s training rows and predict its test rows.
+    Returns (i, {(metric, model): (test_row_index, predictions)}, {(metric, model): failed})."""
+    c = _CTX
+    d, rows, xs, test = c["d"], c["rows"], c["xs"], c["folds"][i][1]
+    fit, apply, cfg, model_list, metrics = c["fit"], c["apply"], c["cfg"], c["models"], c["metrics"]
+    train = ~test
+    tr = d[train] if any(mod != BASELINE_RAW for mod in model_list) else None
+    preds, fails = {}, {}
+    for m in metrics:
+        te = test & (xs[m] > 0)
+        if not te.any():
+            continue
+        idx = np.flatnonzero(te)
+        rte = rows.iloc[idx]
+        for mod in model_list:
+            if mod == BASELINE_RAW:
+                preds[(m, mod)] = (idx, xs[m][idx])
+                continue
+            try:
+                params = fit(mod, tr, m, cfg)
+                p = np.asarray(apply(params, rte, m), float)
+                if p.shape != (len(idx),):
+                    raise ValueError(f"apply_model returned shape {p.shape}")
+            except Exception as e:  # a failing model must not kill the run
+                fails[(m, mod)] = repr(e)
+                p = np.full(len(idx), np.nan)
+            preds[(m, mod)] = (idx, p)
+    return i, preds, fails
+
+
+def _run_folds(n_folds: int, n_jobs: int):
+    """Yield _fold_job results, serially or in forked workers that share ``_CTX``."""
+    if n_jobs <= 1 or n_folds <= 1:
+        for i in range(n_folds):
+            yield _fold_job(i)
+        return
+    ctx = mp.get_context("fork")
+    with ctx.Pool(min(n_jobs, n_folds)) as pool:
+        yield from pool.imap_unordered(_fold_job, range(n_folds))
+
+
+def resolve_jobs(n_jobs: int | None) -> int:
+    """``None`` -> env ``HARMONIZE_JOBS`` (default 1); ``-1`` -> all CPUs."""
+    if n_jobs is None:
+        n_jobs = int(os.environ.get("HARMONIZE_JOBS", "1"))
+    return os.cpu_count() or 1 if n_jobs < 0 else max(1, int(n_jobs))
+
+
 def _validate_table(d: pd.DataFrame, src: str, dn: str, model_list: list[str], metrics,
-                    schemes, fit, apply, cfg: Config, log) -> tuple[list, list]:
+                    schemes, fit, apply, cfg: Config, log, domain_folds=None,
+                    n_jobs: int = 1) -> tuple[list, list]:
     """All schemes / metrics / models on one (modis_source, daynight) table.
-    Returns (monthly frames, fold-info rows)."""
+    Returns (monthly frames, fold-info rows). Folds run in parallel when ``n_jobs`` > 1;
+    the result does not depend on ``n_jobs``."""
     rows = modis_rows(d, src)
     codes, keys = _group_codes(d)
     ng = len(keys)
     obs = {m: np.bincount(codes, d[f"viirs_{m}"].to_numpy(float), ng) for m in metrics}
     xs = {m: np.nan_to_num(d[f"modis_{m}"].to_numpy(float)) for m in metrics}
     monthly, finfo = [], []
+    dom_arr = d["domain"].astype(str).to_numpy()
     for scheme in schemes:
-        folds = make_folds(d, scheme)
+        folds = make_folds(d, scheme, domain_folds=domain_folds)
         if not folds:
             continue
         # oof[(metric, model)] = per-row prediction (0 where MODIS = 0)
@@ -278,30 +398,20 @@ def _validate_table(d: pd.DataFrame, src: str, dn: str, model_list: list[str], m
         nfail = {k: 0 for k in oof}
         t0 = time.time()
         for fname, test in folds:
-            train = ~test
             finfo.append(dict(scheme=scheme, fold=fname, modis_source=src, daynight=dn,
-                              n_train=int(train.sum()), n_test=int(test.sum()),
-                              test_domains=";".join(sorted(map(str, d.loc[test, "domain"].unique())))))
-            tr = d[train] if any(mod != BASELINE_RAW for mod in model_list) else None
-            for m in metrics:
-                te = test & (xs[m] > 0)
-                if not te.any():
-                    continue
-                rte = rows[te]
-                for mod in model_list:
-                    if mod == BASELINE_RAW:
-                        oof[(m, mod)][te] = xs[m][te]
-                        continue
-                    try:
-                        params = fit(mod, tr, m, cfg)
-                        p = np.asarray(apply(params, rte, m), float)
-                        if p.shape != (int(te.sum()),):
-                            raise ValueError(f"apply_model returned shape {p.shape}")
-                        oof[(m, mod)][te] = p
-                    except Exception as e:  # a failing model must not kill the run
-                        nfail[(m, mod)] += 1
-                        oof[(m, mod)][te] = np.nan
-                        warnings.warn(f"{mod}/{m}/{src}/{dn}/{scheme}/{fname} failed: {e!r}")
+                              n_train=int((~test).sum()), n_test=int(test.sum()),
+                              test_domains=";".join(sorted(set(dom_arr[test])))))
+        _CTX.update(d=d, rows=rows, xs=xs, folds=folds, fit=fit, apply=apply, cfg=cfg,
+                    models=model_list, metrics=metrics)
+        try:
+            for i, preds, fails in _run_folds(len(folds), n_jobs):
+                for k, (idx, p) in preds.items():
+                    oof[k][idx] = p
+                for k, err in fails.items():
+                    nfail[k] += 1
+                    warnings.warn(f"{k[1]}/{k[0]}/{src}/{dn}/{scheme}/{folds[i][0]} failed: {err}")
+        finally:
+            _CTX.clear()
         log(f"  {src:11s} {dn:3s} {scheme:16s} {len(folds):2d} folds  {time.time() - t0:6.1f}s")
         for (m, mod), pr in oof.items():
             bad = np.bincount(codes, np.isnan(pr).astype(float), ng) > 0
@@ -315,9 +425,35 @@ def _validate_table(d: pd.DataFrame, src: str, dn: str, model_list: list[str], m
     return monthly, finfo
 
 
+def global_domain_folds(paired_by_source: dict, n_folds: int = N_DOMAIN_FOLDS,
+                        seed: int = DOMAIN_FOLD_SEED) -> dict[str, int]:
+    """One domain -> fold map for every table: volume from the day+night (ALL) rows of all
+    MODIS configurations together."""
+    parts = []
+    for p in paired_by_source.values():
+        if p is None or p.empty:
+            continue
+        q = p[p["daynight"].astype(str) == "ALL"] if "daynight" in p else p
+        parts.append(domain_volume(q))
+    if not parts:
+        return {}
+    vol = pd.concat(parts).groupby(level=0).sum()
+    return domain_fold_map(vol, n_folds, seed)
+
+
+def effective_schemes(schemes, n_domains: int, max_lodo: int = MAX_LODO_DOMAINS) -> tuple:
+    """Swap leave_domain_out for domain_kfold when there are too many domains for one fold each."""
+    if n_domains > max_lodo:
+        out = [DOMAIN_KFOLD if s == "leave_domain_out" else s for s in schemes]
+        return tuple(dict.fromkeys(out))
+    return tuple(schemes)
+
+
 def run_validation(paired_by_source: dict[str, pd.DataFrame], cfg: Config, models=None,
                    schemes=SCHEMES, metrics=METRICS, sources=MODIS_CONFIGS,
-                   daynights=DAYNIGHT, verbose: bool = True) -> dict[str, pd.DataFrame]:
+                   daynights=DAYNIGHT, verbose: bool = True, n_jobs: int | None = None,
+                   n_domain_folds: int = N_DOMAIN_FOLDS, max_lodo_domains: int = MAX_LODO_DOMAINS,
+                   out_subdir: str = "validation") -> dict[str, pd.DataFrame]:
     """Evaluate metric x model x modis_source x daynight under every hold-out scheme.
 
     ``paired_by_source``: {modis_source: SCHEMA §4 paired table}. ``models``: subset of
@@ -334,7 +470,16 @@ def run_validation(paired_by_source: dict[str, pd.DataFrame], cfg: Config, model
         warnings.warn(f"models not provided by the backend, skipped: {unknown}")
         model_list = [m for m in model_list if m not in unknown]
     log = print if verbose else (lambda *_: None)
-    log(f"validation backend={backend} models={model_list}")
+    n_jobs = resolve_jobs(n_jobs)
+    doms = set()
+    for p in paired_by_source.values():
+        if p is not None and not p.empty:
+            doms |= set(p["domain"].astype(str).unique())
+    schemes = effective_schemes(schemes, len(doms), max_lodo_domains)
+    dfolds = (global_domain_folds(paired_by_source, n_domain_folds)
+              if DOMAIN_KFOLD in schemes else None)
+    log(f"validation backend={backend} models={model_list} schemes={list(schemes)} "
+        f"domains={len(doms)} n_jobs={n_jobs}")
     monthly, finfo = [], []
     for src in sources:
         p = paired_by_source.get(src)
@@ -345,7 +490,7 @@ def run_validation(paired_by_source: dict[str, pd.DataFrame], cfg: Config, model
             if d.empty:
                 continue
             mo, fi = _validate_table(d, src, dn, model_list, metrics, schemes, fit, apply,
-                                     cfg, log)
+                                     cfg, log, domain_folds=dfolds, n_jobs=n_jobs)
             monthly += mo
             finfo += fi
             del d
@@ -366,7 +511,7 @@ def run_validation(paired_by_source: dict[str, pd.DataFrame], cfg: Config, model
     scores = pd.DataFrame(srows)
     res = {"scores": scores, "domain_scores": dscores, "monthly_oof": mon,
            "folds": pd.DataFrame(finfo), "summary": summarize(scores)}
-    out = cfg.out_dir / "validation"
+    out = cfg.out_dir / out_subdir
     out.mkdir(parents=True, exist_ok=True)
     for k, v in res.items():
         v.to_csv(out / f"{k}.csv", index=False)
@@ -383,7 +528,8 @@ def summarize(scores: pd.DataFrame) -> pd.DataFrame:
     worst p90 over all schemes (``worst_scheme_p90_abs_bias_pct``) as a robustness check."""
     if scores.empty:
         return scores
-    prim = PRIMARY_SCHEME if (scores["scheme"] == PRIMARY_SCHEME).any() else "spatial_block"
+    prim = next((sc for sc in (PRIMARY_SCHEME, DOMAIN_KFOLD, "spatial_block")
+                 if (scores["scheme"] == sc).any()), "spatial_block")
     s = scores[scores["scheme"] == prim].copy()
     combo = ["metric", "model", "modis_source", "daynight"]
     worst = scores.groupby(combo)["p90_abs_bias_pct"].max().rename("worst_scheme_p90_abs_bias_pct")
