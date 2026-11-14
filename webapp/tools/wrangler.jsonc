@@ -1,0 +1,8 @@
+// Cloudflare settings for the public website. Only the staged folder ../../fire-globe-site
+// (built by tools/deploy.sh) is published: never this project folder, which holds the
+// raw data, the git history and the NASA key.
+{
+  "name": "fire-globe",
+  "compatibility_date": "2026-11-01",
+  "assets": { "directory": "../../fire-globe-site" }
+}

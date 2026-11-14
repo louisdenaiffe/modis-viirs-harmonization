@@ -662,7 +662,7 @@ Promise.all([ready, new Promise(res => map.once('load', res))]).then(() => {
 
 /* ================= 5. Panel ================= */
 // m0..m1: the chosen date range, as month numbers since January 2000; y0..y1 are its years.
-const state = { sel: null, result: null, mode: 'harm', view: 'count', fmt: 'xlsx', m0: 0, m1: 0, y0: 0, y1: 0, model: null, token: 0 };
+const state = { sel: null, result: null, mode: 'harm', view: 'count', m0: 0, m1: 0, y0: 0, y1: 0, model: null, token: 0 };
 const fullYears = () => state.m0 % 12 === 0 && state.m1 % 12 === 11;
 const monthName = m => `${MONTHS[m % 12]} ${2000 + Math.floor(m / 12)}`;
 const rangeLabel = () => fullYears() ? (state.y0 === state.y1 ? `${state.y0}` : `${state.y0}–${state.y1}`) : `${monthName(state.m0)} – ${monthName(state.m1)}`;
@@ -757,7 +757,7 @@ function segmented(id, key) {
     render();
   });
 }
-segmented('modeSeg', 'mode'); segmented('viewSeg', 'view'); segmented('fmtSeg', 'fmt');
+segmented('modeSeg', 'mode'); segmented('viewSeg', 'view');
 // Date range: a start month + year and an end month + year.
 function setRange(m0, m1) {
   if (m0 > m1) [m0, m1] = [m1, m0];
@@ -904,11 +904,10 @@ function render() {
 
   const rawPts = md.rows.reduce((a, r) => a + r.cells.reduce((x, c) => x + (c.exists ? state.result.modis[c.m] + state.result.viirs[c.m] : 0), 0), 0);
   state.rawPoints = rawPts;
-  const limit = state.fmt === 'xlsx' ? MAX_XLSX_ROWS : MAX_POINTS;
-  $('dlPoints').disabled = rawPts > limit || rawPts === 0;
-  const mb = Math.max(1, Math.round(rawPts * (state.fmt === 'xlsx' ? 30 : 75) / 1e6));
-  $('dlNote').textContent = rawPts > limit
-    ? `This search holds ${nf(rawPts)} individual hotspots; ${state.fmt === 'xlsx' ? `Excel files hold at most ${nf(MAX_XLSX_ROWS)} rows (use CSV for up to ${nf(MAX_POINTS)})` : `the hotspot file is limited to ${nf(MAX_POINTS)}`}. Select a smaller area or a shorter date range.`
+  $('dlPoints').disabled = rawPts > MAX_POINTS || rawPts === 0;
+  const mb = Math.max(1, Math.round(rawPts * 75 / 1e6));
+  $('dlNote').textContent = rawPts > MAX_POINTS
+    ? `This search holds ${nf(rawPts)} individual hotspots; the hotspot file is limited to ${nf(MAX_POINTS)}. Select a smaller area or a shorter date range.`
     : `The hotspot file will contain ${nf(rawPts)} rows, about ${mb} MB (every MODIS and VIIRS detection in the area and dates chosen).`;
   $('sourceNote').textContent = `Source: NASA FIRMS archive (MODIS Collection 6.1, VIIRS S-NPP 375 m), ${md.ix.coverage}, ` +
     `${md.ix.firstDate} to ${md.ix.lastDate}. Harmonization ratios measured over Feb 2012 – ${MONTHS[md.ix.overlap[1] % 12]} ${2000 + Math.floor(md.ix.overlap[1] / 12)}.`;
@@ -1146,134 +1145,15 @@ const MAX_POINTS = 3000000;
 // The file starts with a byte-order mark so Excel reads it as UTF-8.
 const CSV = { sep: ',', num: v => String(v), bom: '\uFEFF' };
 const csvLine = cells => cells.join(CSV.sep);
-const fileTypes = { csv: ['CSV file', 'text/csv'], png: ['PNG image', 'image/png'],
-  xlsx: ['Excel workbook', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] };
-const MAX_XLSX_ROWS = 1048575;          // Excel's limit is 1,048,576 rows, header included
-
-/* ----- Excel (.xlsx) writer -----
-   An .xlsx file is a zip archive of a few XML files. This builds it directly in the browser,
-   so Excel opens it with numbers in their own columns whatever the computer's language. */
-const CRC_TABLE = (() => {
-  const t = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
-  return t;
-})();
-const xmlEsc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const EXCEL_EPOCH = Date.UTC(1899, 11, 30);
-class XlsxSheet {
-  constructor(name, widths) { this.name = name; this.widths = widths; this.parts = []; this.buf = []; this.rows = 0; this.enc = new TextEncoder(); }
-  // Cell values: numbers stay numbers, { date: 'YYYY-MM-DD' } becomes an Excel date, the rest is text.
-  cell(v) {
-    if (typeof v === 'number' && Number.isFinite(v)) return `<c><v>${v}</v></c>`;
-    if (v && v.date) { const [y, m, d] = v.date.split('-').map(Number); return `<c s="1"><v>${(Date.UTC(y, m - 1, d) - EXCEL_EPOCH) / 864e5}</v></c>`; }
-    return `<c t="inlineStr"><is><t>${xmlEsc(v)}</t></is></c>`;
-  }
-  header(cols) { this.buf.push(`<row r="1">${cols.map(c => `<c s="2" t="inlineStr"><is><t>${xmlEsc(c)}</t></is></c>`).join('')}</row>`); this.rows = 1; }
-  add(rows) {
-    for (const r of rows) this.buf.push(`<row r="${++this.rows}">${r.map(v => this.cell(v)).join('')}</row>`);
-    if (this.buf.length > 5000) this.flush();
-  }
-  flush() { if (this.buf.length) { this.parts.push(this.enc.encode(this.buf.join(''))); this.buf = []; } }
-  xml() {
-    this.flush();
-    const cols = this.widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('');
-    const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-      (this.rows > 1 ? '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' : '<sheetViews><sheetView workbookViewId="0"/></sheetViews>') +
-      `<cols>${cols}</cols><sheetData>`;
-    return [this.enc.encode(head), ...this.parts, this.enc.encode('</sheetData></worksheet>')];
-  }
-}
-async function zipEntry(name, chunks) {
-  let crc = 0xFFFFFFFF, size = 0;
-  for (const c of chunks) { for (let i = 0; i < c.length; i++) crc = CRC_TABLE[(crc ^ c[i]) & 255] ^ (crc >>> 8); size += c.length; }
-  crc = (crc ^ 0xFFFFFFFF) >>> 0;
-  let data = new Blob(chunks), method = 0;
-  if (typeof CompressionStream !== 'undefined') {
-    data = await new Response(data.stream().pipeThrough(new CompressionStream('deflate-raw'))).blob();
-    method = 8;
-  }
-  return { name: new TextEncoder().encode(name), crc, size, csize: data.size, method, data };
-}
-async function buildXlsx(sheets) {
-  const enc = s => [new TextEncoder().encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' + s)];
-  const NS = 'http://schemas.openxmlformats.org', REL = NS + '/officeDocument/2006/relationships';
-  const files = [
-    ['[Content_Types].xml', enc(`<Types xmlns="${NS}/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>` +
-      sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('') + '</Types>')],
-    ['_rels/.rels', enc(`<Relationships xmlns="${NS}/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`)],
-    ['xl/workbook.xml', enc(`<workbook xmlns="${NS}/spreadsheetml/2006/main" xmlns:r="${REL}"><sheets>` +
-      sheets.map((sh, i) => `<sheet name="${xmlEsc(sh.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('') + '</sheets></workbook>')],
-    ['xl/_rels/workbook.xml.rels', enc(`<Relationships xmlns="${NS}/package/2006/relationships">` +
-      sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="${REL}/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('') +
-      `<Relationship Id="rId${sheets.length + 1}" Type="${REL}/styles" Target="styles.xml"/></Relationships>`)],
-    ['xl/styles.xml', enc(`<styleSheet xmlns="${NS}/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>` +
-      '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
-      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
-      '<xf numFmtId="14" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs>' +
-      '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>')],
-    ...sheets.map((sh, i) => [`xl/worksheets/sheet${i + 1}.xml`, sh.xml()])
-  ];
-  const entries = [];
-  for (const [name, chunks] of files) entries.push(await zipEntry(name, chunks));
-  // Zip layout: [local header + data] for each file, then the central directory, then its end record.
-  const out = [], central = [];
-  let offset = 0;
-  const hdr = (len, fill) => { const b = new DataView(new ArrayBuffer(len)); fill(b); return new Uint8Array(b.buffer); };
-  for (const e of entries) {
-    const local = hdr(30, b => {
-      b.setUint32(0, 0x04034b50, true); b.setUint16(4, 20, true); b.setUint16(8, e.method, true);
-      b.setUint16(12, 0x21, true); b.setUint32(14, e.crc, true); b.setUint32(18, e.csize, true); b.setUint32(22, e.size, true);
-      b.setUint16(26, e.name.length, true);
-    });
-    central.push(hdr(46, b => {
-      b.setUint32(0, 0x02014b50, true); b.setUint16(4, 20, true); b.setUint16(6, 20, true); b.setUint16(10, e.method, true);
-      b.setUint16(14, 0x21, true); b.setUint32(16, e.crc, true); b.setUint32(20, e.csize, true); b.setUint32(24, e.size, true);
-      b.setUint16(28, e.name.length, true); b.setUint32(42, offset, true);
-    }), e.name);
-    out.push(local, e.name, e.data);
-    offset += 30 + e.name.length + e.csize;
-  }
-  const cdSize = central.reduce((a, c) => a + c.length, 0);
-  out.push(...central, hdr(22, b => {
-    b.setUint32(0, 0x06054b50, true); b.setUint16(8, entries.length, true); b.setUint16(10, entries.length, true);
-    b.setUint32(12, cdSize, true); b.setUint32(16, offset, true);
-  }));
-  return new Blob(out, { type: fileTypes.xlsx[1] });
-}
-
-// A table goes to either format through the same three calls: begin(columns), rows(list), end().
-function tableSink(fmt, write, sheetName, widths, about) {
-  if (fmt === 'csv') {
-    const pending = [];
-    return {
-      begin: cols => pending.push(write(CSV.bom + csvLine(cols) + '\r\n')),
-      rows: rows => { if (rows.length) pending.push(write(rows.map(r => csvLine(r.map(v => (v && v.date ? v.date : v)))).join('\r\n') + '\r\n')); },
-      end: () => Promise.all(pending)
-    };
-  }
-  const sheet = new XlsxSheet(sheetName, widths);
+const fileTypes = { csv: ['CSV file', 'text/csv'], png: ['PNG image', 'image/png'] };
+// A table is written as CSV through three calls: begin(columns), rows(list), end().
+function tableSink(write) {
+  const pending = [];
   return {
-    begin: cols => sheet.header(cols),
-    rows: rows => sheet.add(rows),
-    end: async () => {
-      const info = new XlsxSheet('About', [28, 90]);
-      info.add(about);
-      await write(await buildXlsx([sheet, info]));
-    }
+    begin: cols => pending.push(write(CSV.bom + csvLine(cols) + '\r\n')),
+    rows: rows => { if (rows.length) pending.push(write(rows.map(r => csvLine(r.map(v => (v && v.date ? v.date : v)))).join('\r\n') + '\r\n')); },
+    end: () => Promise.all(pending)
   };
-}
-// What the file contains, written on the "About" sheet of the Excel workbook.
-function aboutRows() {
-  const s = state.sel, ix = data.index;
-  return [
-    ['Area', s.country ? s.country : `${s.south.toFixed(4)} to ${s.north.toFixed(4)} latitude, ${s.west.toFixed(4)} to ${s.east.toFixed(4)} longitude`],
-    ['Area size (km²)', Math.round(s.areaM2 / 1e6)],
-    ['Dates', rangeLabel()],
-    ['Counts', 'Harmonized = VIIRS-equivalent hotspots: before Feb 2012, MODIS counts scaled by the local VIIRS/MODIS ratio; from Feb 2012, VIIRS counts.'],
-    ['Source', `NASA FIRMS (MODIS Collection 6.1, VIIRS S-NPP 375 m), ${ix.firstDate} to ${ix.lastDate}`],
-    ['Made with', `Fire Globe, ${location.origin}`],
-    ['Downloaded', new Date().toISOString().slice(0, 10)]
-  ];
 }
 // Browsers built into other apps (such as the Claude app's preview pane) cannot save files.
 const EMBEDDED = /\bClaude\//.test(navigator.userAgent);
@@ -1318,7 +1198,7 @@ async function runDownload(btn, name, produce) {
     $('dlNote').textContent = `Could not save ${name}: ${e.message}`;
   } finally {
     btn.textContent = label;
-    btn.disabled = btn === $('dlPoints') && (state.rawPoints > (state.fmt === 'xlsx' ? MAX_XLSX_ROWS : MAX_POINTS) || !state.rawPoints);
+    btn.disabled = btn === $('dlPoints') && (state.rawPoints > MAX_POINTS || !state.rawPoints);
   }
 }
 const fileStem = () => {
@@ -1328,9 +1208,9 @@ const fileStem = () => {
   return `fire_${where}_${fullYears() ? `${state.y0}-${state.y1}` : `${ym(state.m0)}_to_${ym(state.m1)}`}`;
 };
 
-$('dlTable').onclick = () => runDownload($('dlTable'), `${fileStem()}_monthly.${state.fmt}`, async write => {
+$('dlTable').onclick = () => runDownload($('dlTable'), `${fileStem()}_monthly.csv`, async write => {
   const r = state.result, md = state.model;
-  const out = tableSink(state.fmt, write, 'Monthly', [8, 8, 12, 12, 30, 15, 16], aboutRows());
+  const out = tableSink(write);
   out.begin(['year', 'month', 'modis_raw', 'viirs_raw', 'harmonized_viirs_equivalent', 'source', 'complete_month']);
   const rows = [];
   for (const row of md.rows) for (const c of row.cells) if (c.exists) {
@@ -1341,12 +1221,12 @@ $('dlTable').onclick = () => runDownload($('dlTable'), `${fileStem()}_monthly.${
   await out.end();
 });
 
-$('dlPoints').onclick = () => runDownload($('dlPoints'), `${fileStem()}_hotspots.${state.fmt}`, async write => {
+$('dlPoints').onclick = () => runDownload($('dlPoints'), `${fileStem()}_hotspots.csv`, async write => {
   const btn = $('dlPoints'), ix = data.index;
   {
     const m0 = state.m0, m1 = state.m1;
     const SAT = ['Terra', 'Aqua', 'Suomi NPP'], CONF = ['low', 'nominal', 'high'];
-    const out = tableSink(state.fmt, write, 'Hotspots', [11, 11, 12, 11, 11, 11, 9, 9, 6, 18], aboutRows());
+    const out = tableSink(write);
     out.begin(['latitude', 'longitude', 'acq_date', 'satellite', 'instrument', 'confidence', 'frp', 'daynight', 'type', 'harmonized_weight']);
     await walk(state.sel, true, {
       points(t, dv, n, keep) {

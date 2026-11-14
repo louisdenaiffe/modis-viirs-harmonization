@@ -1,5 +1,5 @@
 #!/bin/bash
-# Publish the app to Cloudflare Pages as a public website (https://<project>.pages.dev).
+# Publish the app as a public website on Cloudflare (https://fire-globe.<your-subdomain>.workers.dev).
 #
 #     tools/deploy.sh            # first time: run "npx wrangler login" once before this
 #
@@ -10,7 +10,6 @@
 set -euo pipefail
 APP="$(cd "$(dirname "$0")/.." && pwd)"
 SITE="$(dirname "$APP")/fire-globe-site"
-PROJECT="${CF_PAGES_PROJECT:-fire-globe}"
 
 rm -rf "$SITE"
 mkdir -p "$SITE"
@@ -22,5 +21,7 @@ for item in meta.json coarse.bin blocks tiles heat0 heat1; do
 done
 echo "Staged $(find "$SITE" -type f | wc -l | tr -d ' ') files ($(du -sh "$SITE" | cut -f1)) in $SITE"
 
-npx --yes wrangler@4 pages project create "$PROJECT" --production-branch main 2>/dev/null || true
-npx --yes wrangler@4 pages deploy "$SITE" --project-name "$PROJECT" --branch main --commit-dirty=true
+# Published as a Cloudflare Worker serving static files (Cloudflare's replacement for Pages),
+# using tools/wrangler.jsonc, whose only folder is the staged site above.
+cd "$APP"
+exec npx --yes wrangler@4 deploy --config "$APP/tools/wrangler.jsonc" "$@"
