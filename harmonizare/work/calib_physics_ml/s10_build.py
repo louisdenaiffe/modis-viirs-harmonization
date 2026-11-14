@@ -17,7 +17,7 @@ if step == 'groups':
     v.to_parquet(f'{W}/viirs_1825.parquet', index=False); print(len(v))
 else:
     y = int(step)
-    am_r = mod('rezultate/calib_ratio/apply_model.py', 'am_r'); am_p = mod('rezultate/calib_physics_ml/apply_model.py', 'am_p')
+    am_r = mod('rezultate/calib_ratio/apply_model_v2.py', 'am_r'); am_p = mod('rezultate/calib_physics_ml/apply_model.py', 'am_p')
     g = f'data/grid/monthly_025/monthly_{y}.parquet'
     v = con.execute(f"SELECT * FROM '{g}' WHERE satellite='SNPP'").df()
     p = am_r.predict(v, interval=False); pn, pf = am_p.predict(v, counts='p1'); night = (v.daynight == 'N').values

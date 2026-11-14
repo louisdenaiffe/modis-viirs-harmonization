@@ -1,4 +1,8 @@
 VIIRS_data/
 MODIS_data/
+VIIRS data/
+MODIS data/
 harmonizare/data/
-
+harmonizare/rezultate/final/parts/
+.DS_Store
+__pycache__/

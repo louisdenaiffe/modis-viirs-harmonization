@@ -65,3 +65,32 @@
 
 Files: `factors_v2.parquet` (v1 rows plus var=`n_best_hilat` for BONA_lo/hi and BOAS_lo/hi), `apply_model_v2.py` (same `predict(df)`; needs an `n_best` column, otherwise falls back to v1), `junction_audit.csv`. Scripts are in `work/calib_ratio/` (junction.py, drift.py, hilat.py `<base|lat|nbest|nbest_lat|act>`, hilat_loyo.py, fit_v2.py, yak.py).
 To use v2 in production: in `04_build_final.py`, call `apply_model_v2.predict` for day, passing `n_best` from `monthly_025`.
+
+## Reverse direction (Aqua -> VIIRS scale)
+Files: `factors_reverse.parquet` (levels region_season / b2 / cell / interval_cell / constants), `apply_model_reverse.py` (`predict(df)` -> pred_n, pred_frp, lo/hi), `reverse_eval_regions.csv`, `accuracy_viirs_scale.csv`. Scripts: `work/calib_ratio/rev_cv.py`, `rev_fit.py`, `rev_eval.py`, `rev_acc.py`. Masked monthly table; calibration 2012-02..2017-12; test 2018-2021 without Aug-Sep 2020.
+- **Recipe:** same as B5 with roles swapped (target S-NPP, input Aqua). Shrinkage constants were chosen by leaving out one calibration year at a time. The first 3x3 grid had its best value on the edge, so I re-ran a grid shifted x10 to find a minimum inside it.
+
+  | | season n0 | cell n0 |
+  |---|---|---|
+  | counts D | 1e5 | 300 |
+  | counts N | 1e4 | 300 |
+  | FRP D (MW) | 1e6 | 1e5 (edge) |
+  | FRP N (MW) | 1e6 | 1e4 |
+
+  The forward constants are NOT reused. In the reverse direction the season level barely helps (large n0 ≈ one ratio per region). The cell level lowers year-out cell error by 5-9% compared with region ratios alone.
+- **Structural limit:** the prediction is 0 wherever Aqua is 0. On test, those cells hold 36% of VIIRS night counts (23% of night FRP) and 6% of day counts (4% of day FRP). The ratio of sums puts that mass back on the cells Aqua did see. Regional totals stay roughly right, but at night the active cells are over-predicted (median obs/pred about 0.5) and the map is too concentrated.
+- **Headline errors at region-month level (test), which do not cancel** (MAE = sum|p-o|/sum o; RMSE relative to mean obs).
+
+  | | median over 14 regions: \|bias\| / MAE / RMSE | worst region \|bias\| | GLOBAL: bias / MAE / RMSE |
+  |---|---|---|---|
+  | Day counts | 3.0% / 7.3% / 11.6% | 10.7% (MIDE) | -2.8% / 4.5% / 5.4% |
+  | Day FRP | 4.0% / 10.8% / 19.4% | 14.7% (BONA) | -1.7% / 4.9% / 6.0% |
+  | Night counts | 10.4% / 21.0% / 46.2% | 41% (BONA) | -1.0% / 10.2% / 14.8% |
+  | Night FRP | 11.6% / 20.7% / 40.9% | 65% (EQAS) | +4.0% / 17.3% / 30.9% |
+
+  These match the orchestrator's quick swapped-roles fit (day 2.9% / 9.1%, night 9.7% / 44%); there is no improvement over it.
+- **Cell-month 10-90% interval:** test coverage 0.80-0.84 for cells with pred > 0. Cells with pred = 0 are not covered.
+- **accuracy_viirs_scale.csv** gives monthly and annual values for block sizes 0.25-5°, D/N/ALL and 5 activity bins, plus a "pred=0 (missed)" row. Examples, monthly counts:
+  - Day: 1° blocks with 1000-9999 predicted pixels: median |error| 11%, 76% within ±20%. 0.25° cells with 100-999: 20%.
+  - Night: 0.25° cells: median |error| 80-108% in every bin. 1° blocks with 1000-9999: 39%. 5° blocks with ≥10,000: 23% (79% within ±50%).
+- **Plain sentence:** night values on the VIIRS scale are usable only for regional monthly totals (GFED-box level: about 21% typical monthly error) or for 5° blocks with at least about 1,000 predicted night detections per month (median error 24%). Night values for single cells or 1-2° blocks should not be shown as numbers.

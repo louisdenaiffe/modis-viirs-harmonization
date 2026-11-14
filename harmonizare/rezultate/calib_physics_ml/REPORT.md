@@ -94,3 +94,29 @@ Files: `accuracy_by_scale.csv` (for the app; bins are the PREDICTED value, becau
 - **10-99 detections**: about ±25-35%; label "low confidence" and show the range from the CSV.
 - **Below 10 per month**: do not quote a number. Show "few fires" only, or switch to the annual total, which is about twice as accurate.
 - A single episodic megafire season in a box can still be off by ±40%.
+
+## Accuracy lookup v2 (masked, with RMS)
+Setup: masked monthly table; production recipe (DAY = calib_ratio `apply_model_v2`, NIGHT = P1 `counts='p1'`); test years 2018-2021 (Aug-Sep 2020 excluded); predicted Aqua-equivalent vs real Aqua.
+- File: `accuracy_modis_scale.csv`, 259 rows, with the requested columns and bin labels. Bins are on the PREDICTED value.
+- Errors are absolute or RMS, never signed, so they cannot cancel. Relative error is clipped to ±300%: a median of 300 means most of those blocks had zero Aqua detections.
+- Reproduce: `work/calib_physics_ml/s10_build.py 2018..2021`, then `s13_lookup_v2.py`.
+
+**Day+night total (ALL), monthly, at 1° (0.25-5° within a few points):**
+
+| Detections/month in rectangle | Median error | RMS error | Within ±20% | Label |
+|---|---|---|---|---|
+| ≥1000 | 9% (6.5% at ≥10000, 5°) | 16-19% (10%) | 82-87% (95%) | high |
+| 100-999 | 13-15% | 28-40% | 63-71% | medium |
+| 10-99 | 23-30% | 66-89% | 36-44% | low |
+| <10 | 56-69% | about 170% | 17% | none: show "few fires", no number |
+
+**FRP:**
+- ≥10^4 MW/month at 1° or more is about medium: 14-16% median, 36-41% RMS. ≥10^5 MW at 5° reaches 8% median, 21% RMS.
+- 10^3-10^4 MW is low (about 29%, RMS about 82%).
+- Below 10^3 MW: none.
+
+**Annual totals:** one confidence level better. Counts 100-999/yr: 11% median, 22% RMS; ≥1000/yr: 6-7% median, 12-15% RMS.
+
+**Mask:** the mask did not change the picture. Day counts match the earlier table to within 1 point (e.g. 1° ≥1000: 9% / 87% within ±20% before and after).
+
+**For the app:** the RMS is 2-3 times the median because of a heavy tail, mostly episodic megafire months and months where Aqua saw nothing. Show the median as the "typical error" and the p10-p90 ratio as the range.

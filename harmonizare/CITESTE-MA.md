@@ -2,6 +2,34 @@
 
 14 noiembrie 2026 · NASA Space Apps · track „Harmonization of MODIS and VIIRS Hot Spots”
 
+## CE FOLOSIȚI: folderul `APP_DATA/`
+Tot ce are nevoie aplicația e în `harmonizare/APP_DATA/`, cu instrucțiuni în `APP_DATA/CITESTE-MA-APLICATIE.md`.
+Datele sunt pe două scări (MODIS și VIIRS), lunar, cu sursă, interval, rang și nivel de încredere.
+Se reface cu: `04_build_final.py` (repetat până scrie DONE) → `05_summaries.py` → `08_app_package.py`.
+Detecțiile Parquet (`data/points`) au fost șterse ca să nu ocupe disc; se refac cu `01_ingest.py` dacă mai e nevoie.
+
+## ACTUALIZARE (14 nov., seara) — cifrele de mai jos le înlocuiesc pe cele din restul documentului
+Trei îmbunătățiri aplicate și seria reconstruită:
+1. **Mască de surse statice** (rafinării, flăcări de gaze, lavă): scoate 0,2% din detecțiile de zi și ~3% din cele de noapte
+   (VIIRS 3,5%, Aqua 2,7%). Script: `scripts/06_apply_mask.py`; masca: `rezultate/static_mask/static_mask_001.parquet`.
+2. **Latitudini mari** (Canada, Siberia), ziua: factori separați peste/sub 60°N, pe cea mai puternică trecere din zi.
+3. **2000–2002**: conversia Terra → Aqua folosește anii cei mai apropiați (2003–2006).
+
+Eroare față de Aqua real, test 2018–2021, după aceste schimbări:
+
+| | Global | Regiune mediană | Cea mai slabă regiune |
+|---|---|---|---|
+| Detecții, zi | +2,6% | 2,1% | 6,1% |
+| FRP, zi | +1,6% | 2,9% | 8,4% |
+| Detecții, noapte | +1,6% | 5,5% | 31% |
+| FRP, noapte | −2,3% | 3,3% | 34% |
+
+Pe țări (139 de țări, ziua): eroare mediană 4,5%; 74% din țări sub 10%, 91% sub 20%. Noaptea (79 de țări): mediană 10%.
+Tabel: `rezultate/final/validation_by_country.csv`. Direcția inversă (MODIS → scara VIIRS) e testată în
+`rezultate/final/direction_test.csv`: ziua aceeași exactitate, noaptea mai slabă.
+Tabelul lunar fără mască e păstrat în `data/grid/monthly_025_nomask/`; factorii vechi în `*_nomask.*`.
+Notă: `accuracy_by_scale.csv` a fost calculat înainte de mască; ordinele de mărime rămân valabile.
+
 ## Pe scurt
 Am construit o serie unică de activitate a focurilor, 2000–2025, pe grilă de 0,25°, lunar, separat zi/noapte,
 în unități „echivalent MODIS Aqua”. Trecerea de la MODIS la VIIRS nu mai produce salt:

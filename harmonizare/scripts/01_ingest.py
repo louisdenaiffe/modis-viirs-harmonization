@@ -9,7 +9,7 @@ t0 = time.time()
 con = duckdb.connect(); con.execute("SET memory_limit='1800MB'; SET threads=4; SET preserve_insertion_order=false")
 out = 'harmonizare/data/points'
 jobs = []
-for sensor, root, bcol, b2col in [('MODIS','MODIS data','brightness','bright_t31'), ('VIIRS','VIIRS data','bright_ti4','bright_ti5')]:
+for sensor, root, bcol, b2col in [('MODIS','MODIS?data','brightness','bright_t31'), ('VIIRS','VIIRS?data','bright_ti4','bright_ti5')]   # matches 'MODIS data' or 'MODIS_data':
     for d in sorted(glob.glob(f'{root}/*/[12][0-9][0-9][0-9]')):
         jobs.append((sensor, int(os.path.basename(d)), d, bcol, b2col))
 jobs.sort(key=lambda j: (j[1], j[0]))

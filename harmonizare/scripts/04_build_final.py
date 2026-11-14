@@ -5,7 +5,9 @@ Source priority per month and day/night:
   2002-07..2021-12: real Aqua; if Aqua month is flagged 'exclude' -> VIIRS-equivalent, else Terra back-fill
   2022-01 onwards : S-NPP VIIRS converted to Aqua-equivalent; if S-NPP month excluded -> real Aqua
 VIIRS conversion: DAY = calib_ratio B5 v2 (region x season ratio x cell factor; BONA/BOAS day counts from n_best, split at 60N); NIGHT = calib_physics_ml P1 (weights per VIIRS FRP class).
-Months flagged 'rescale' are divided by their coverage weight. Output: harmonizare/rezultate/final/"""
+Months flagged 'rescale' are divided by their coverage weight.
+Both scales are written: n_eq/frp_eq = Aqua-MODIS scale; n_veq/frp_veq = VIIRS scale (real S-NPP where healthy from 2012-02,
+otherwise Aqua or Terra back-fill x reverse factors from rezultate/calib_ratio/apply_model_reverse.py). Output: harmonizare/rezultate/final/"""
 import duckdb, pandas as pd, numpy as np, sys, os, time, importlib.util
 budget = float(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1][0] != '-' else 80
 force = '--force' in sys.argv; t0 = time.time()
@@ -14,6 +16,7 @@ sys.path.insert(0, f'{R}/scripts'); import eval_common as ec
 def mod(path, name):
     s = importlib.util.spec_from_file_location(name, path); m = importlib.util.module_from_spec(s); s.loader.exec_module(m); return m
 am_r = mod(f'{R}/rezultate/calib_ratio/apply_model_v2.py', 'am_r'); am_p = mod(f'{R}/rezultate/calib_physics_ml/apply_model.py', 'am_p')
+am_rev = mod(f'{R}/rezultate/calib_ratio/apply_model_reverse.py', 'am_rev')   # Aqua -> VIIRS scale
 FR = am_r.load_factors()
 comp = pd.read_csv(f'{R}/rezultate/qc_stability/completeness_monthly.csv')
 comp = comp[comp.daynight.isin(['D', 'N'])][['satellite', 'daynight', 'year', 'month', 'coverage', 'flag_month']]
@@ -74,15 +77,44 @@ def year_part(y):
             t['lo_n'] = t.n_eq * (1 - 1.28 * cv).clip(lower=0); t['hi_n'] = t.n_eq * (1 + 1.28 * cv)
             t['lo_frp'] = t.frp_eq * (1 - 1.28 * cv).clip(lower=0); t['hi_frp'] = t.frp_eq * (1 + 1.28 * cv)
             t['source'] = 'terra_backfill'; frames['terra'] = qc(t, 'Terra')
+    # ---- VIIRS-scale versions of the same months (n_veq, frp_veq): real VIIRS where S-NPP is healthy, otherwise Aqua (or Terra back-fill) x reverse factors
+    VMAP = {'n_eq': 'n_veq', 'frp_eq': 'frp_veq', 'lo_n': 'lo_nv', 'hi_n': 'hi_nv', 'lo_frp': 'lo_frpv', 'hi_frp': 'hi_frpv', 'source': 'source_v'}
+    fv = {}
+    if len(v):
+        w = v[KEY].copy(); w['n_eq'] = v.n_sum.astype(float).values; w['frp_eq'] = v.frp_sum.astype(float).values
+        w['lo_n'] = w.n_eq; w['hi_n'] = w.n_eq; w['lo_frp'] = w.frp_eq; w['hi_frp'] = w.frp_eq; w['source'] = 'viirs'
+        fv['viirs'] = qc(w, 'SNPP')[KEY + list(VMAP)].rename(columns=VMAP)
+    for name, lab, widen in (('aqua', 'aqua_to_viirs', 1.0), ('terra', 'terra_to_viirs', 1.25)):
+        if name in frames and len(frames[name]):
+            src = frames[name][KEY + ['n_eq', 'frp_eq']].rename(columns={'n_eq': 'n_sum', 'frp_eq': 'frp_sum'}).reset_index(drop=True)
+            r = am_rev.predict(src).reset_index(drop=True)
+            assert (r[['ix', 'iy', 'month']].values == src[['ix', 'iy', 'month']].values).all()
+            g = src[KEY].copy(); g['n_veq'] = r.pred_n.values; g['frp_veq'] = r.pred_frp.values
+            g['lo_nv'] = np.nan_to_num(r.lo_n.values) / widen; g['hi_nv'] = np.nan_to_num(r.hi_n.values) * widen
+            g['lo_frpv'] = np.nan_to_num(r.lo_frp.values) / widen; g['hi_frpv'] = np.nan_to_num(r.hi_frp.values) * widen; g['source_v'] = lab; fv[name] = g
+    VCOLS = KEY + list(VMAP.values()); NUM = ['n_eq', 'frp_eq', 'lo_n', 'hi_n', 'lo_frp', 'hi_frp', 'n_veq', 'frp_veq', 'lo_nv', 'hi_nv', 'lo_frpv', 'hi_frpv']
     out = []
     for m in range(1, 13):
         ym = y * 100 + m
         order = ['terra'] if ym < 200207 else (['aqua', 'viirs', 'terra'] if ym <= 202112 else ['viirs', 'aqua'])
         for dn in 'DN':
+            fm = fg = None
             for s in order:
                 if s in frames:
                     f = frames[s]; f = f[(f.month == m) & (f.daynight == dn)]
-                    if len(f): out.append(f[COLS]); break
+                    if len(f): fm = f[COLS]; break
+            for s in ['viirs', 'aqua', 'terra']:
+                if s in fv:
+                    g = fv[s]; g = g[(g.month == m) & (g.daynight == dn)]
+                    if len(g): fg = g[VCOLS]; break
+            if fm is None and fg is None: continue
+            if fm is None: fm = pd.DataFrame(columns=COLS)
+            if fg is None: fg = pd.DataFrame(columns=VCOLS)
+            j = fm.merge(fg, on=KEY, how='outer')
+            for c_ in NUM: j[c_] = pd.to_numeric(j[c_], errors='coerce').fillna(0.0)
+            for c_ in ('source', 'flag', 'source_v'):
+                val = j[c_].dropna(); j[c_] = j[c_].fillna(val.iloc[0] if len(val) else 'none')
+            out.append(j)
     return pd.concat(out, ignore_index=True) if out else None
 
 done = True
@@ -92,7 +124,8 @@ for y in range(2000, 2026):
     if time.time() - t0 > budget: done = False; print('budget reached; rerun'); break
     d = year_part(y)
     if d is None: continue
-    for c_ in ['n_eq', 'frp_eq', 'lo_n', 'hi_n', 'lo_frp', 'hi_frp']: d[c_] = d[c_].astype('float32')
+    for c_ in ['n_eq', 'frp_eq', 'lo_n', 'hi_n', 'lo_frp', 'hi_frp', 'n_veq', 'frp_veq', 'lo_nv', 'hi_nv', 'lo_frpv', 'hi_frpv']: d[c_] = d[c_].astype('float32')
+    for c_ in ('ix', 'iy', 'year', 'month'): d[c_] = d[c_].astype('int16')
     d.to_parquet(dst, index=False, compression='zstd')
-    print(y, len(d), d.groupby('source').n_eq.sum().round(0).to_dict(), round(time.time() - t0), 's', flush=True)
+    print(y, len(d), d.groupby('source').n_eq.sum().round(0).to_dict(), d.groupby('source_v').n_veq.sum().round(0).to_dict(), round(time.time() - t0), 's', flush=True)
 print('DONE' if done else 'PARTIAL')
