@@ -37,7 +37,7 @@ FIELDS = ["latitude", "longitude", "acq_date", "acq_time", "satellite", "instrum
 
 def read_key():
     key = os.environ.get("FIRMS_MAP_KEY", "").strip()
-    path = os.path.join(os.path.dirname(HERE), ".firms_key")
+    path = os.path.join(os.path.dirname(os.path.dirname(HERE)), ".firms_key")
     if not key and os.path.exists(path):
         key = open(path).read().strip()
     if not key:

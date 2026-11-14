@@ -47,10 +47,10 @@ You spin a globe, draw a rectangle, and get a burning-activity calendar for that
   Argentina matches NASA's own Argentina file to 99.94% (the small gap is the difference
   between NASA's border and Natural Earth's).
 
-### 3. Preparing the data (`tools/build_tiles.py`)
+### 3. Preparing the data (`tools/legacy/build_tiles.py`, then `tools/build_world.py` for the world)
 Run once, in Python, with no extra packages:
 
-    python3 -I tools/build_tiles.py data/raw/argentina data Argentina
+    python3 -I tools/legacy/build_tiles.py data/raw/argentina data Argentina   (first version; the world uses tools/build_world.py)
 
 - Reads the FIRMS CSV files (4.6 million hotspots for Argentina, 2000-2025).
 - Cuts the world into **1 degree x 1 degree squares ("tiles")** and writes one small
@@ -99,15 +99,15 @@ not correct for MODIS sensor ageing or for individual satellite outages.
   (limited to 500,000 rows).
 - Calendar and charts (PNG).
 
-### 7. The current year (`tools/fetch_nrt.py`)
+### 7. The current year (`tools/legacy/fetch_nrt.py`, then `tools/fetch_nrt_world.py`)
 NASA's yearly archive files stop at the end of last year. For 2026 the script asks the
 FIRMS API (which needs a free key, stored in `.firms_key`, never shared) for every 5-day
 window since 1 January, inside a rectangle around Argentina, and keeps only the points
 inside Argentina's border (outline from Natural Earth, public domain). It takes
 science-quality data as far as it exists and near-real-time data for the latest weeks.
 
-    python3 -I tools/fetch_nrt.py data/raw/argentina 2026
-    python3 -I tools/build_tiles.py data/raw/argentina data Argentina
+    python3 -I tools/legacy/fetch_nrt.py data/raw/argentina 2026
+    python3 -I tools/legacy/build_tiles.py data/raw/argentina data Argentina   (first version; the world uses tools/build_world.py)
 
 Run both again any time to bring the app up to date. Months that are not finished are
 outlined in the table, left out of the medians, and left out of the harmonization ratios.
@@ -166,6 +166,6 @@ outlined in the table, left out of the medians, and left out of the harmonizatio
 
 ## Run it
 
-    python3 -m http.server 8765 --directory ~/Work/claude/fire-globe
+    python3 tools/serve.py
 
-then open http://localhost:8765
+then open http://localhost:8765 (see README.md for updating the data and publishing).
