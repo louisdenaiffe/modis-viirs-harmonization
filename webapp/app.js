@@ -449,9 +449,19 @@ let lastTouch = -Infinity, flying = false, lastFrame = performance.now();
 for (const ev of ['mousedown', 'wheel', 'touchstart', 'keydown'])
   addEventListener(ev, () => { lastTouch = performance.now(); }, { passive: true, capture: true });
 map.on('moveend', () => { flying = false; });
+// Ticking Auto-rotate starts the spin at once, even with something selected (zoomed in, it
+// first zooms out). The 6-second pause only applies to later touches of the globe.
+let rotateNow = false;
+$('rotateChk').addEventListener('change', e => {
+  rotateNow = e.target.checked;
+  if (!rotateNow) return;
+  lastTouch = -Infinity;
+  if (map.getZoom() >= 4) { flying = true; map.easeTo({ zoom: 3, duration: 800 }); } else flying = false;
+});
 (function spin(t) {
   const dt = Math.min(100, t - lastFrame); lastFrame = t;
-  if ($('rotateChk').checked && !drag && !flying && !selectMode && !currentBox && !currentCountry && map.getZoom() < 4 && t - lastTouch > 6000) {
+  if ($('rotateChk').checked && !drag && !flying && !selectMode && (rotateNow || (!currentBox && !currentCountry)) &&
+      map.getZoom() < 4 && t - lastTouch > 6000) {
     const c = map.getCenter();
     map.setCenter([c.lng + dt * 0.004, c.lat]);       // about 4 degrees per second
   }
@@ -1080,6 +1090,7 @@ $('scroll').addEventListener('scroll', e => {
 $('panelTab').onclick = () => openPanel(true);
 
 window.addEventListener('aoi-selected', async e => {
+  rotateNow = false;                                 // a new selection stays in view
   const sel = state.sel = e.detail, token = ++state.token;
   state.result = null;
   $('results').hidden = true;
