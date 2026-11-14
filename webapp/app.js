@@ -5,6 +5,9 @@
 const EARTH_R = 6371008.8;              // mean Earth radius, metres
 const MIN_SIDE_M = 375;                 // one VIIRS pixel: smallest allowed selection side
 const DEG = Math.PI / 180;
+// Play / Pause icons for the fire-map button (drawn, so they match across systems).
+const ICON_PLAY = '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1v8l7-4z" fill="currentColor"/></svg>';
+const ICON_PAUSE = '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1h2.2v8H2zM5.8 1H8v8H5.8z" fill="currentColor"/></svg>';
 const M_PER_DEG_LAT = EARTH_R * DEG;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
@@ -817,7 +820,7 @@ async function playScale() {
 function stopPlay() {
   play.on = false;
   clearTimeout(play.timer);
-  $('playBtn').textContent = '▶ Play';
+  $('playBtn').innerHTML = ICON_PLAY + 'Play';
   $('playBtn').setAttribute('aria-pressed', 'false');
   heat.shown = '';
   showHeat();                                     // back to the month's own colour scale
@@ -827,7 +830,7 @@ async function startPlay() {
   let m = (+$('heatYear').value - 2000) * 12 + +$('heatMonth').value;
   if (m >= ix.lastMonth) m = ix.firstMonth;        // at the end: start again from the beginning
   play.on = true;
-  $('playBtn').textContent = '❚❚ Pause';
+  $('playBtn').innerHTML = ICON_PAUSE + 'Pause';
   $('playBtn').setAttribute('aria-pressed', 'true');
   $('heatChk').checked = true;
   await playScale();
@@ -1145,7 +1148,7 @@ function render() {
 
 /* ================= 6. Charts (plain SVG) ================= */
 const NS = 'http://www.w3.org/2000/svg';
-const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+const FONT = '"IBM Plex Sans", system-ui, sans-serif';
 function svgEl(tag, attrs = {}, text) {
   const e = document.createElementNS(NS, tag);
   for (const [k2, v] of Object.entries(attrs)) e.setAttribute(k2, v);
