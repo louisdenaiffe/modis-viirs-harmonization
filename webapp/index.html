@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fire Globe</title>
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<style>
+  :root {
+    --panel: rgba(14, 17, 24, 0.94);
+    --surface: #1a1a19;
+    --border: rgba(255, 255, 255, 0.10);
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --text: #f0efec;
+    --text-2: #c3c2b7;
+    --muted: #898781;
+    --accent: #ffb020;
+    --blue: #3987e5;
+    --orange: #d95926;
+    --panel-w: min(640px, max(520px, 40vw));
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #02030a; color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+  /* Space background: nebula glow + star canvas, both behind the transparent map canvas */
+  #space { position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 18% 22%, rgba(70, 60, 160, 0.28), transparent 55%),
+      radial-gradient(ellipse at 82% 75%, rgba(20, 90, 140, 0.22), transparent 55%),
+      radial-gradient(ellipse at 60% 10%, rgba(140, 50, 90, 0.12), transparent 45%),
+      #02030a; }
+  #stars { position: fixed; inset: 0; width: 100%; height: 100%; }
+  #map { position: fixed; inset: 0; background: transparent; }
+  #map.selecting .maplibregl-canvas { cursor: crosshair !important; }
+
+  .handle { width: 14px; height: 14px; border-radius: 50%; background: var(--accent);
+    border: 2px solid #1a1200; box-shadow: 0 0 0 2px rgba(255, 176, 32, 0.35); cursor: grab; }
+
+  #tools { position: fixed; z-index: 5; top: 16px; left: 16px; padding: 8px; display: flex; flex-direction: column;
+    gap: 8px; width: min(400px, calc(100vw - 32px));
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); }
+  #tools .row { display: flex; gap: 8px; align-items: center; }
+  #search { flex: 1; min-width: 0; padding: 7px 10px; }
+  #searchResults { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; }
+  #searchResults:empty { display: none; }
+  #searchResults li { padding: 6px 8px; border-radius: 6px; cursor: pointer; color: var(--text-2); font-size: 13px; }
+  #searchResults li:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+  label.toggle { display: flex; gap: 6px; align-items: center; color: var(--text-2); font-size: 13px;
+    padding: 0 4px; cursor: pointer; user-select: none; }
+  label.toggle input { accent-color: var(--accent); }
+  #timebar { position: fixed; z-index: 5; left: 16px; bottom: 28px; width: min(520px, calc(100vw - 32px));
+    padding: 10px 14px 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); }
+  #timebar .row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  #timebar .row label { color: var(--text-2); font-size: 13px; }
+  #heatCaption { flex: 1; font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #heatYear { width: 78px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  #heatMonth { width: 100%; margin: 0; padding: 0; border: 0; background: transparent; accent-color: #e5484d;
+    cursor: ew-resize; }
+  #monthTicks { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);
+    margin: 2px -4px 0; user-select: none; }
+  #monthTicks span { width: 26px; text-align: center; cursor: pointer; }
+  #monthTicks span.on { color: var(--text); font-weight: 600; }
+  #readout { position: fixed; z-index: 5; left: 16px; bottom: 136px; padding: 10px 12px; min-width: 250px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); font-variant-numeric: tabular-nums; font-size: 13px; }
+  #readout b { display: block; font-size: 17px; color: var(--accent); margin-bottom: 4px; }
+  #readout span { color: var(--muted); display: inline-block; width: 52px; }
+  button, select, input { font: inherit; color: var(--text); background: rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--border); border-radius: 8px; }
+  button { padding: 7px 14px; cursor: pointer; }
+  button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #selectBtn.active { background: var(--accent); border-color: var(--accent); color: #1a1200; font-weight: 600; }
+  select, input { padding: 5px 8px; }
+  select option { background: #1a1a19; }
+
+  /* ---------- Results panel ---------- */
+  #panel { position: fixed; z-index: 6; top: 0; right: 0; bottom: 0; width: var(--panel-w);
+    background: var(--panel); border-left: 1px solid var(--border); backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px); transform: translateX(100%); transition: transform 0.25s ease;
+    display: flex; flex-direction: column; }
+  #panel.open { transform: none; }
+  #panelTab { position: fixed; z-index: 6; top: 16px; right: 16px; display: none; }
+  #panelTab.show { display: block; }
+  #panel header { display: flex; align-items: baseline; gap: 10px; padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border); }
+  #panel header h1 { margin: 0; font-size: 16px; font-weight: 600; flex: 1; }
+  #panel header button { padding: 3px 10px; }
+  #scroll { overflow-y: auto; padding: 14px 16px 24px; flex: 1; }
+  section { margin-bottom: 20px; }
+  h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--muted); }
+  .sub { color: var(--text-2); font-size: 13px; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  .bounds { display: grid; grid-template-columns: repeat(4, 1fr) auto; gap: 6px; align-items: end; }
+  .bounds label { font-size: 11px; color: var(--muted); display: block; }
+  .bounds input { width: 100%; font-variant-numeric: tabular-nums; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; background: transparent; padding: 5px 11px; color: var(--text-2); }
+  .seg button.on { background: rgba(255, 255, 255, 0.16); color: var(--text); font-weight: 600; }
+  .filters label { color: var(--muted); font-size: 12px; }
+
+  .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .kpi .k { font-size: 12px; color: var(--muted); }
+  .kpi .v { font-size: 22px; font-weight: 600; line-height: 1.25; }
+  .kpi .d { font-size: 12px; color: var(--text-2); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+  table.cal { width: 100%; border-collapse: separate; border-spacing: 2px; font-size: 11px;
+    font-variant-numeric: tabular-nums; table-layout: fixed; }
+  table.cal th { font-weight: 500; color: var(--muted); padding: 2px 0; text-align: center; }
+  table.cal th.y, table.cal td.y { width: 38px; text-align: left; color: var(--text-2); }
+  table.cal td { text-align: center; padding: 4px 0; border-radius: 3px; white-space: nowrap; overflow: hidden; }
+  table.cal td.c { cursor: default; }
+  table.cal td.c:hover { outline: 2px solid var(--text); outline-offset: -1px; }
+  table.cal td.na { color: var(--axis); }
+  table.cal td.partial { box-shadow: inset 0 0 0 1px var(--muted); }
+  table.cal td.tot, table.cal th.tot { width: 50px; text-align: right; color: var(--text); font-weight: 600; padding-right: 2px; }
+  table.cal tr.med td { color: var(--text-2); border-top: 1px solid var(--axis); }
+  .ramp { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .ramp i { flex: 1; height: 8px; border-radius: 4px; max-width: 220px; }
+
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-2); margin-bottom: 4px; flex-wrap: wrap; }
+  .legend span::before { content: ""; display: inline-block; width: 14px; height: 3px; border-radius: 2px;
+    background: var(--c); vertical-align: middle; margin-right: 6px; }
+  .legend span.band::before { height: 10px; opacity: 0.3; }
+  svg { display: block; width: 100%; height: auto; }
+  svg .hit:hover .cross { opacity: 1; }
+  svg .bar:hover { filter: brightness(1.25); }
+
+  .downloads { display: flex; flex-wrap: wrap; gap: 8px; }
+  #status { padding: 30px 8px; text-align: center; color: var(--text-2); }
+  #tip { position: fixed; z-index: 20; pointer-events: none; background: #0b0b0b; color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; font-size: 12px;
+    white-space: pre-line; max-width: 260px; display: none; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5); }
+
+  @media (max-width: 760px) {
+    :root { --panel-w: 100vw; }
+    #timebar { bottom: 64px; }
+    #readout { bottom: 172px; }
+    #panel { top: 42%; border-left: 0; border-top: 1px solid var(--border); transform: translateY(100%); }
+  }
+</style>
+</head>
+<body>
+<div id="space"></div>
+<canvas id="stars"></canvas>
+<div id="map"></div>
+
+<div id="tools">
+  <div class="row">
+    <input id="search" type="search" placeholder="Search a place, or type lat, lon" autocomplete="off" aria-label="Search a place or coordinates">
+    <button id="selectBtn" title="Draw a selection rectangle (or hold Shift and drag)">Select</button>
+    <button id="clearBtn" title="Remove the selection">Clear</button>
+  </div>
+  <ul id="searchResults"></ul>
+  <div class="row">
+    <label class="toggle"><input id="labelsChk" type="checkbox" checked> Labels and borders</label>
+    <label class="toggle"><input id="rotateChk" type="checkbox" checked> Auto-rotate</label>
+  </div>
+</div>
+<div id="readout" hidden></div>
+
+<div id="timebar">
+  <div class="row">
+    <label class="toggle"><input id="heatChk" type="checkbox" checked> Fire map</label>
+    <span id="heatCaption"></span>
+    <label for="heatYear">Year</label>
+    <input id="heatYear" type="number" inputmode="numeric" step="1">
+  </div>
+  <input id="heatMonth" type="range" min="0" max="11" step="1" aria-label="Month">
+  <div id="monthTicks"></div>
+</div>
+<button id="panelTab">Show results</button>
+
+<aside id="panel" aria-label="Fire activity for the selected area">
+  <header>
+    <h1>Fire activity</h1>
+    <span class="sub" id="areaText"></span>
+    <button id="panelClose" title="Hide this panel">Hide</button>
+  </header>
+  <div id="scroll">
+    <section>
+      <h2>Selected area</h2>
+      <div class="bounds">
+        <div><label for="bN">North</label><input id="bN" type="number" step="0.0001" min="-90" max="90"></div>
+        <div><label for="bS">South</label><input id="bS" type="number" step="0.0001" min="-90" max="90"></div>
+        <div><label for="bW">West</label><input id="bW" type="number" step="0.0001" min="-180" max="180"></div>
+        <div><label for="bE">East</label><input id="bE" type="number" step="0.0001" min="-180" max="180"></div>
+        <button id="bApply">Apply</button>
+      </div>
+      <div class="note">Drag the orange corner dots on the globe to resize, or type exact coordinates.</div>
+    </section>
+
+    <div id="status">Loading data…</div>
+
+    <div id="results" hidden>
+      <section>
+        <div class="filters">
+          <span class="seg" id="modeSeg" role="group" aria-label="Counts shown">
+            <button data-v="harm" class="on">Harmonized</button><button data-v="raw">Raw</button>
+          </span>
+          <span class="seg" id="viewSeg" role="group" aria-label="Table view">
+            <button data-v="count" class="on">Counts</button><button data-v="anom">Anomaly</button>
+          </span>
+          <span><label for="y0">From</label> <select id="y0"></select></span>
+          <span><label for="y1">To</label> <select id="y1"></select></span>
+        </div>
+        <div class="note" id="modeNote"></div>
+      </section>
+
+      <section><div class="kpis" id="kpis"></div></section>
+
+      <section>
+        <h2 id="calTitle">Hotspots per month</h2>
+        <div class="card">
+          <table class="cal" id="cal"></table>
+          <div class="ramp" id="ramp"></div>
+        </div>
+        <div class="note" id="calNote"></div>
+      </section>
+
+      <section>
+        <h2>Fire season: typical year against <span id="seasonYear"></span></h2>
+        <div class="card">
+          <div class="legend" id="seasonLegend"></div>
+          <svg id="seasonChart" viewBox="0 0 560 220" role="img" aria-label="Hotspots by month of the year"></svg>
+        </div>
+      </section>
+
+      <section>
+        <h2>Hotspots per year</h2>
+        <div class="card">
+          <svg id="yearChart" viewBox="0 0 560 200" role="img" aria-label="Hotspots per year"></svg>
+        </div>
+        <div class="note" id="yearNote"></div>
+      </section>
+
+      <section>
+        <h2>Download</h2>
+        <div class="downloads">
+          <button id="dlTable">Monthly table (CSV)</button>
+          <button id="dlPoints">Hotspots in this search (CSV)</button>
+          <button id="dlPng">Calendar and charts (PNG)</button>
+        </div>
+        <div class="note" id="dlNote"></div>
+      </section>
+
+      <div class="note" id="sourceNote"></div>
+    </div>
+  </div>
+</aside>
+<div id="tip"></div>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

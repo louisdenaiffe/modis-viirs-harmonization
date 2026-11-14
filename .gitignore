@@ -10,3 +10,8 @@ outputs_global/*
 !outputs_global/plots/
 *.parquet
 .cache/
+
+# Fire Globe web app (generated data, local key)
+webapp/data/
+webapp/.firms_key
+.DS_Store
