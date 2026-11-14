@@ -78,8 +78,8 @@ const map = new maplibregl.Map({
         'heatmap-opacity': 0.92
       } },
       { id: 'labels', type: 'raster', source: 'labels' },
-      { id: 'aoi-fill', type: 'fill', source: 'aoi', paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.1 } },
-      { id: 'aoi-line', type: 'line', source: 'aoi', paint: { 'line-color': '#ffffff', 'line-width': 2.5 } }
+      { id: 'aoi-fill', type: 'fill', source: 'aoi', filter: ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]], paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.1 } },
+      { id: 'aoi-line', type: 'line', source: 'aoi', filter: ['in', ['geometry-type'], ['literal', ['LineString', 'MultiLineString']]], paint: { 'line-color': '#ffffff', 'line-width': 2.5 } }
     ]
   }
 });
@@ -136,8 +136,28 @@ function setSelectMode(on) {
   mapEl.classList.toggle('selecting', on);
   lockPan(on);
 }
+// The fill and the outline are separate features. Drawing the outline from the filled shape
+// would also trace the straight edges where the map cuts shapes into tiles (a line across
+// Russia at 90°E when zoomed out) and the seam where a country is split at the 180° meridian.
+function aoiFeatures(polys) {
+  const lines = [];
+  for (const poly of polys) for (const r of poly) {
+    let cur = [r[0]];
+    for (let i = 1; i < r.length; i++) {
+      const a = r[i - 1], b = r[i];
+      if (Math.abs(a[0]) === 180 && a[0] === b[0]) {          // along the 180° seam: break the line
+        if (cur.length > 1) lines.push(cur);
+        cur = [b];
+      } else cur.push(b);
+    }
+    if (cur.length > 1) lines.push(cur);
+  }
+  return { type: 'FeatureCollection', features: [
+    { type: 'Feature', properties: {}, geometry: { type: 'MultiPolygon', coordinates: polys } },
+    { type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: lines } }] };
+}
 function drawBox(b) {
-  map.getSource('aoi').setData({ type: 'FeatureCollection', features: b ? [rectPolygon(b)] : [] });
+  map.getSource('aoi').setData(b ? aoiFeatures([rectPolygon(b).geometry.coordinates]) : { type: 'FeatureCollection', features: [] });
   showReadout(b);
 }
 // Live readout of the rectangle being drawn or selected: size and corner coordinates.
@@ -292,7 +312,7 @@ function countryArea(c) {
   return c.p.reduce((sum, poly) => sum + ring(poly[0]) - poly.slice(1).reduce((h, r) => h + ring(r), 0), 0);
 }
 function drawCountry(c) {
-  map.getSource('aoi').setData({ type: 'Feature', properties: {}, geometry: { type: 'MultiPolygon', coordinates: c.p } });
+  map.getSource('aoi').setData(aoiFeatures(c.p));
   const box = $('readout');
   box.hidden = false;
   box.textContent = '';
@@ -305,10 +325,15 @@ function drawCountry(c) {
   hint.textContent = 'Click elsewhere to deselect';
   box.append(head, sub, hint);
 }
-async function selectCountryAt(ll) {
+async function countryAt(ll) {
   const x = wrapLng(ll.lng), y = ll.lat, list = await loadCountries();
-  const c = list.find(k => x >= k.b[0] && x <= k.b[2] && y >= k.b[1] && y <= k.b[3] && ringsContain(k.p, x, y));
-  if (!c) return;                                   // clicked on the ocean: keep the current selection
+  return list.find(k => x >= k.b[0] && x <= k.b[2] && y >= k.b[1] && y <= k.b[3] && ringsContain(k.p, x, y));
+}
+async function selectCountryAt(ll) {
+  const c = await countryAt(ll);
+  if (c) selectCountry(c);                          // clicked on the ocean: keep the current selection
+}
+function selectCountry(c) {
   if (c.area === undefined) c.area = countryArea(c);
   committedAt = performance.now();
   currentBox = null;
@@ -435,15 +460,54 @@ for (const ev of ['mousedown', 'wheel', 'touchstart', 'keydown'])
 map.on('moveend', () => { flying = false; });
 (function spin(t) {
   const dt = Math.min(100, t - lastFrame); lastFrame = t;
-  if ($('rotateChk').checked && !drag && !flying && !selectMode && !currentBox && map.getZoom() < 4 && t - lastTouch > 6000) {
+  if ($('rotateChk').checked && !drag && !flying && !selectMode && !currentBox && !currentCountry && map.getZoom() < 4 && t - lastTouch > 6000) {
     const c = map.getCenter();
     map.setCenter([c.lng + dt * 0.004, c.lat]);       // about 4 degrees per second
   }
   requestAnimationFrame(spin);
 })(lastFrame);
 
-/* ----- Search: a place name (OpenStreetMap Nominatim) or "lat, lon" ----- */
+/* ----- Search: a country, a place name (OpenStreetMap Nominatim) or "lat, lon" ----- */
 function flyWith(fn) { flying = true; lastTouch = performance.now(); fn(); }
+// Everyday names for countries whose Natural Earth name is formal.
+const COUNTRY_ALIASES = {
+  'usa': 'United States', 'us': 'United States', 'united states of america': 'United States', 'america': 'United States',
+  'uk': 'United Kingdom', 'great britain': 'United Kingdom', 'britain': 'United Kingdom', 'england': 'United Kingdom',
+  'russia': 'Russian Federation', 'south korea': 'Republic of Korea', 'korea': 'Republic of Korea',
+  'north korea': 'Dem. Rep. Korea', 'laos': 'Lao PDR', 'eswatini': 'Kingdom of eSwatini', 'swaziland': 'Kingdom of eSwatini',
+  'drc': 'Democratic Republic of the Congo', 'dr congo': 'Democratic Republic of the Congo', 'congo': 'Republic of the Congo',
+  'czechia': 'Czech Republic', 'ivory coast': "Côte d'Ivoire", 'cape verde': 'Republic of Cabo Verde', 'gambia': 'The Gambia',
+  'burma': 'Myanmar', 'brunei': 'Brunei Darussalam', 'east timor': 'Timor-Leste', 'macedonia': 'North Macedonia',
+  'falkland islands': 'Falkland Islands / Malvinas', 'falklands': 'Falkland Islands / Malvinas', 'micronesia': 'Federated States of Micronesia',
+  'uae': 'United Arab Emirates', 'turkiye': 'Turkey', 'türkiye': 'Turkey', 'holland': 'Netherlands', 'sao tome and principe': 'São Tomé and Principe'
+};
+const plain = t => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+async function countryNamed(q) {
+  const list = await loadCountries(), key = plain(q);
+  const alias = COUNTRY_ALIASES[key] || COUNTRY_ALIASES[q.toLowerCase().trim()];
+  if (alias) return list.find(c => c.n === alias);
+  return list.find(c => plain(c.n) === key) ||
+    (key.length >= 4 ? list.filter(c => plain(c.n).startsWith(key)).sort((a, b) => a.n.length - b.n.length)[0] : undefined);
+}
+// Frame the main landmass (its biggest polygon), so Russia or Fiji do not zoom out to the whole world.
+function countryFrame(c) {
+  let best = null, bestA = -1;
+  for (const poly of c.p) {
+    const r = poly[0], xs = r.map(p => p[0]), ys = r.map(p => p[1]);
+    const b = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], a = (b[2] - b[0]) * (b[3] - b[1]);
+    if (a > bestA) { bestA = a; best = b; }
+  }
+  return c.b[2] - c.b[0] > 180 ? best : c.b;
+}
+function goToCountry(c) {
+  $('searchResults').textContent = '';
+  $('search').value = c.n;
+  const [w, s, e, n] = countryFrame(c);
+  flying = true;
+  selectCountry(c);
+  // The panel opens with a short camera move of its own; fly once it is done, or it would cancel ours.
+  setTimeout(() => flyWith(() => map.fitBounds([[w, s], [e, n]], { padding: 60, maxZoom: 6 })), 350);
+}
 $('search').addEventListener('keydown', async e => {
   if (e.key !== 'Enter') return;
   const q = e.target.value.trim(), list = $('searchResults');
@@ -454,11 +518,19 @@ $('search').addEventListener('keydown', async e => {
     flyWith(() => map.flyTo({ center: [+m[2], +m[1]], zoom: 13 }));
     return;
   }
+  const named = await countryNamed(q);
+  if (named) { goToCountry(named); return; }
   const li = msg => { const x = document.createElement('li'); x.textContent = msg; list.append(x); return x; };
   try {
     const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=' + encodeURIComponent(q));
     const hits = await r.json();
     if (!hits.length) { li('No place found'); return; }
+    // A country written in another way (or another language): pick it by where Nominatim puts it.
+    const top = hits[0];
+    if (top.addresstype === 'country') {
+      const c = await countryAt({ lng: +top.lon, lat: +top.lat });
+      if (c) { goToCountry(c); return; }
+    }
     for (const h of hits) {
       li(h.display_name).onclick = () => {
         list.textContent = '';
@@ -941,7 +1013,12 @@ window.addEventListener('aoi-selected', async e => {
   if (!sel) { openPanel(false); return; }
   $('bN').value = sel.north.toFixed(4); $('bS').value = sel.south.toFixed(4);
   $('bW').value = sel.west.toFixed(4); $('bE').value = sel.east.toFixed(4);
-  $('areaText').textContent = (sel.country ? sel.country + ' · ' : '') + fmtArea(sel.areaM2);
+  // Title: the country's name, or the rectangle written as latitudes and longitudes.
+  const deg = (v, pos, neg) => `${+Math.abs(v).toFixed(2)}°${v < 0 ? neg : pos}`;
+  $('placeName').textContent = sel.country ||
+    `${deg(sel.south, 'N', 'S')} to ${deg(sel.north, 'N', 'S')}, ${deg(sel.west, 'E', 'W')} to ${deg(sel.east, 'E', 'W')}`;
+  $('areaText').textContent = fmtArea(sel.areaM2) + (sel.country ? ' · inside the national border' : ' · rectangle');
+  $('coordBox').open = false;
   $('areaNote').textContent = sel.country
     ? `Hotspots inside the border of ${sel.country}. The four values above are the box around it; Apply turns it into a rectangle.`
     : 'Drag the orange corner dots on the globe to resize, or type exact coordinates.';

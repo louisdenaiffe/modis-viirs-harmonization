@@ -108,9 +108,20 @@
   #panel.open { transform: none; }
   #panelTab { position: fixed; z-index: 6; top: 16px; right: 16px; display: none; }
   #panelTab.show { display: block; }
-  #panel header { display: flex; align-items: baseline; gap: 10px; padding: 14px 16px 10px;
+  #panel header { display: flex; align-items: flex-start; gap: 12px; padding: 16px 16px 14px;
     border-bottom: 1px solid var(--border); }
-  #panel header h1 { margin: 0; font-size: 16px; font-weight: 600; flex: 1; }
+  #panel header .place { flex: 1; min-width: 0; }
+  #panel header h1 { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.2; letter-spacing: -0.015em; text-wrap: balance; }
+  #panel header .sub { display: block; margin-top: 3px; color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+  /* Coordinates are tucked away: most people select by dragging or by country. */
+  .coords { margin-bottom: 18px; }
+  .coords summary { cursor: pointer; color: var(--text-2); font-size: 13px; width: max-content; list-style: none; }
+  .coords summary::-webkit-details-marker { display: none; }
+  .coords summary::before { content: ""; display: inline-block; width: 0; height: 0; margin: 0 7px 1px 1px;
+    border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent; transition: transform 0.2s; }
+  .coords[open] summary::before { transform: rotate(90deg); }
+  .coords summary:hover { color: var(--text); }
+  .coords[open] summary { margin-bottom: 10px; }
   #panel header button { padding: 3px 10px; }
   #scroll { overflow-y: auto; padding: 14px 16px 24px; flex: 1; }
   section { margin-bottom: 20px; }
@@ -199,7 +210,7 @@
 <div id="tools">
   <div class="brand"><strong>Fire Globe</strong><span>MODIS + VIIRS fire hotspots, harmonized since 2000</span></div>
   <div class="row">
-    <input id="search" type="search" placeholder="Search a place, or type lat, lon" autocomplete="off" aria-label="Search a place or coordinates">
+    <input id="search" type="search" placeholder="Search a country, a place, or lat, lon" autocomplete="off" aria-label="Search a country, a place or coordinates">
     <button id="selectBtn" title="Draw a selection rectangle (or hold Shift and drag). Shift + click, or Select then a tap, selects a whole country.">Select</button>
     <button id="clearBtn" title="Remove the selection">Clear</button>
   </div>
@@ -226,13 +237,15 @@
 
 <aside id="panel" aria-label="Fire activity for the selected area">
   <header>
-    <h1>Fire activity</h1>
-    <span class="sub" id="areaText"></span>
+    <div class="place">
+      <h1 id="placeName">Selected area</h1>
+      <span class="sub" id="areaText"></span>
+    </div>
     <button id="panelClose" title="Hide this panel">Hide</button>
   </header>
   <div id="scroll">
-    <section>
-      <h2>Selected area</h2>
+    <details class="coords" id="coordBox">
+      <summary>Edit coordinates</summary>
       <div class="bounds">
         <div><label for="bN">North</label><input id="bN" type="number" step="0.0001" min="-90" max="90"></div>
         <div><label for="bS">South</label><input id="bS" type="number" step="0.0001" min="-90" max="90"></div>
@@ -241,7 +254,7 @@
         <button id="bApply">Apply</button>
       </div>
       <div class="note" id="areaNote">Drag the orange corner dots on the globe to resize, or type exact coordinates.</div>
-    </section>
+    </details>
 
     <div id="status">Loading data…</div>
 

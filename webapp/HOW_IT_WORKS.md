@@ -122,7 +122,7 @@ outlined in the table, left out of the medians, and left out of the harmonizatio
 
 ### 8. Globe extras
 - **Labels and borders:** a transparent Esri layer of country borders and place names.
-- **Search:** type a place (looked up with OpenStreetMap's Nominatim) or `lat, lon`.
+- **Search:** type a country (e.g. `Brazil`, `USA`, `Russia`) to select it and open its results, a place (looked up with OpenStreetMap's Nominatim) or `lat, lon`. The results panel is titled with the country's name, or the rectangle's latitudes and longitudes; the exact coordinates sit under "Edit coordinates".
 - **Auto-rotate:** the globe turns slowly when zoomed out, untouched for 6 seconds and
   nothing is selected.
 - **Selection readout:** area, size and corner coordinates, live while you drag.
