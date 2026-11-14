@@ -123,6 +123,7 @@
   .coords summary:hover { color: var(--text); }
   .coords[open] summary { margin-bottom: 10px; }
   #panel header button { padding: 3px 10px; }
+  #sheetHandle { display: none; }
   #scroll { overflow-y: auto; padding: 14px 16px 24px; flex: 1; }
   section { margin-bottom: 20px; }
   h2 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--text); text-wrap: balance; }
@@ -193,7 +194,27 @@
     .bounds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .bounds button { grid-column: 1 / -1; }
     #readout { bottom: 172px; }
-    #panel { top: 42%; left: 6px; right: 6px; bottom: 0; width: auto; border-radius: 18px 18px 0 0; border-bottom: 0; transform: translateY(100%); }
+    /* A bottom sheet: half height so the globe stays in view, full height once you read on. */
+    #panel { top: 42%; left: 0; right: 0; bottom: 0; width: auto; border-radius: 20px 20px 0 0; border: 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.18); transform: translateY(100%);
+      /* Denser glass than on a desk screen: the fire map right behind would otherwise blur into the text. */
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 120px), rgba(14, 17, 25, 0.86);
+      box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.45);
+      transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), top 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
+    #panel.full { top: 8px; }
+    #sheetHandle { display: block; position: absolute; top: 0; left: 50%; transform: translateX(-50%); z-index: 2;
+      width: 72px; height: 22px; padding: 0; border: 0; background: transparent; touch-action: none; }
+    #sheetHandle i { display: block; width: 38px; height: 5px; margin: 7px auto 0; border-radius: 3px; background: rgba(255, 255, 255, 0.32); }
+    #sheetHandle:hover i, #sheetHandle:focus-visible i { background: rgba(255, 255, 255, 0.55); }
+    #sheetHandle:focus-visible { outline-offset: -2px; border-radius: 8px; }
+    #panel header { padding: 22px 16px 12px; touch-action: none; }
+    #panel header h1 { font-size: 21px; }
+    #scroll { padding: 14px 16px calc(28px + env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+    .filters { gap: 10px; }
+    /* Charts are drawn 560 units wide and shrink to the screen: larger chart text keeps the
+       axis labels readable (about 10 px) once scaled down. */
+    #results svg { overflow: visible; }       /* edge labels (Median, -51%) may run into the margin */
+    #results svg text { font-size: 15px; }
     /* The calendar keeps readable cells and scrolls sideways instead of squeezing the numbers. */
     .calwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     table.cal { min-width: 600px; }
@@ -236,6 +257,7 @@
 <button id="panelTab">Show results</button>
 
 <aside id="panel" aria-label="Fire activity for the selected area">
+  <button id="sheetHandle" aria-label="Show more of the results" aria-expanded="false"><i></i></button>
   <header>
     <div class="place">
       <h1 id="placeName">Selected area</h1>

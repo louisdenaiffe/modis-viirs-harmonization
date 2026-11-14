@@ -996,6 +996,7 @@ const anomScore = (v, med) => Math.max(-1, Math.min(1, Math.log2((v + 1) / (med 
 
 function setStatus(msg) { $('status').hidden = !msg; $('status').textContent = msg || ''; }
 function openPanel(open) {
+  if (!open || !$('panel').classList.contains('open')) setSheetFull(false);   // a sheet always opens at half height
   $('panel').classList.toggle('open', open);
   $('panelTab').classList.toggle('show', !open && !!state.sel);
   // Keep the globe's centre in the part of the screen the panel leaves free: on the right of a
@@ -1004,6 +1005,41 @@ function openPanel(open) {
   map.easeTo({ padding: { top: 0, bottom: h, left: 0, right: w }, duration: 300 });
 }
 $('panelClose').onclick = () => openPanel(false);
+
+/* ----- Phone: the panel is a bottom sheet, half height or full height ----- */
+const phone = () => innerWidth <= 760;
+function setSheetFull(full) {
+  $('panel').classList.toggle('full', full);
+  $('sheetHandle').setAttribute('aria-expanded', full);
+  $('sheetHandle').setAttribute('aria-label', full ? 'Show less of the results' : 'Show more of the results');
+}
+let sheetSwiped = false;                             // a swipe on the handle is not also a tap
+$('sheetHandle').onclick = () => {
+  if (sheetSwiped) { sheetSwiped = false; return; }
+  setSheetFull(!$('panel').classList.contains('full'));
+};
+// Reading on (scrolling the results) opens the sheet to full height.
+$('scroll').addEventListener('scroll', e => {
+  if (phone() && e.target.scrollTop > 24 && !$('panel').classList.contains('full')) setSheetFull(true);
+}, { passive: true });
+// Swipe on the sheet's top: up for full height, down for half height, down again to hide.
+(() => {
+  let y0 = null;
+  const start = e => { if (phone() && !e.target.closest('#panelClose')) y0 = e.clientY; };
+  const end = e => {
+    if (y0 === null) return;
+    const dy = e.clientY - y0, full = $('panel').classList.contains('full');
+    y0 = null;
+    sheetSwiped = Math.abs(dy) > 30 && e.currentTarget === $('sheetHandle');
+    if (dy < -30) setSheetFull(true);
+    else if (dy > 30) full ? setSheetFull(false) : openPanel(false);
+  };
+  for (const el of [$('sheetHandle'), document.querySelector('#panel header')]) {
+    el.addEventListener('pointerdown', start);
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', () => { y0 = null; });
+  }
+})();
 $('panelTab').onclick = () => openPanel(true);
 
 window.addEventListener('aoi-selected', async e => {
