@@ -19,7 +19,7 @@ How everything works, step by step and in plain words: [HOW_IT_WORKS.md](HOW_IT_
 | Monthly fire map | Bottom-left bar: drag the month cursor, type a year |
 | Watch 2000 → today | **▶ Play** in the bottom-left bar (about 6 months per second; Pause or touch the cursor to stop) |
 | Raw / Harmonized | Raw colours the calendar by satellite (purple = MODIS, teal = VIIRS); Harmonized uses the red to yellow fire scale |
-| Downloads | Monthly table (CSV), charts (PNG) |
+| Downloads | Monthly table (CSV), hotspots in the search (CSV, up to 3 million rows), charts (PNG) |
 
 ## Run it on your computer
 
