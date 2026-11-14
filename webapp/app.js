@@ -902,15 +902,7 @@ function render() {
   drawAnomaly(md, unit);
   drawMonthly(md);
 
-  const rawPts = md.rows.reduce((a, r) => a + r.cells.reduce((x, c) => x + (c.exists ? state.result.modis[c.m] + state.result.viirs[c.m] : 0), 0), 0);
-  state.rawPoints = rawPts;
-  // The button stays clickable even when the search is too big, so it never looks broken:
-  // clicking it then explains the limit and offers a smaller date range.
-  $('dlPoints').disabled = rawPts === 0;
-  const mb = Math.max(1, Math.round(rawPts * 75 / 1e6));
-  $('dlNote').textContent = rawPts > MAX_POINTS
-    ? `This search holds ${nf(rawPts)} hotspots, too many for one file (the limit is ${nf(MAX_POINTS)}).`
-    : `The hotspot file will contain ${nf(rawPts)} rows, about ${mb} MB (every MODIS and VIIRS detection in the area and dates chosen).`;
+  $('dlNote').textContent = `The monthly table holds ${nf(md.rows.reduce((a, r) => a + r.cells.filter(c => c.exists).length, 0))} months: raw MODIS and VIIRS counts and the harmonized value for each.`;
   $('sourceNote').textContent = `Source: NASA FIRMS archive (MODIS Collection 6.1, VIIRS S-NPP 375 m), ${md.ix.coverage}, ` +
     `${md.ix.firstDate} to ${md.ix.lastDate}. Harmonization ratios measured over Feb 2012 – ${MONTHS[md.ix.overlap[1] % 12]} ${2000 + Math.floor(md.ix.overlap[1] / 12)}.`;
 }
@@ -1142,7 +1134,6 @@ document.addEventListener('mousemove', e => {
 // window opens first, while the click still counts as the user's action, and the file is
 // then written straight to disk piece by piece. Otherwise (Safari, Firefox) the classic
 // download link is used. produce(write) calls write(text or Blob) as many times as needed.
-const MAX_POINTS = 3000000;
 // CSV in the standard international (English) format: ',' between columns, '.' in decimals.
 // The file starts with a byte-order mark so Excel reads it as UTF-8.
 const CSV = { sep: ',', num: v => String(v), bom: '\uFEFF' };
@@ -1212,7 +1203,7 @@ async function runDownload(btn, name, produce) {
     $('dlNote').textContent = `Could not save ${name}: ${e.message}`;
   } finally {
     btn.textContent = label;
-    btn.disabled = btn === $('dlPoints') && !state.rawPoints;
+    btn.disabled = false;
   }
 }
 const fileStem = () => {
@@ -1233,51 +1224,6 @@ $('dlTable').onclick = () => runDownload($('dlTable'), `${fileStem()}_monthly.cs
   }
   out.rows(rows);
   await out.end();
-});
-
-// Too many hotspots: explain, and offer the largest recent date range that fits.
-function tooManyPoints() {
-  const r = state.result, note = $('dlNote'), last = Math.min(state.m1, data.index.lastMonth);
-  const pts = m => (r.modis[m] || 0) + (r.viirs[m] || 0);
-  let m0 = last, n = 0;
-  while (m0 >= state.m0 && n + pts(m0) <= MAX_POINTS) { n += pts(m0); m0--; }
-  m0++;
-  note.textContent = `This search holds ${nf(state.rawPoints)} hotspots, more than the ${nf(MAX_POINTS)} a browser can put in one file. ` +
-    'Choose a smaller area or a shorter date range. ';
-  if (m0 <= last) {
-    const b = el('a', { href: '#', className: 'savelink', textContent: `Use ${monthName(m0)} – ${monthName(last)} (${nf(n)} hotspots)` });
-    b.onclick = e => { e.preventDefault(); setRange(m0, last); };
-    note.append(b);
-  }
-}
-$('dlPoints').onclick = () => state.rawPoints > MAX_POINTS ? tooManyPoints() : runDownload($('dlPoints'), `${fileStem()}_hotspots.csv`, async write => {
-  const btn = $('dlPoints'), ix = data.index;
-  {
-    const m0 = state.m0, m1 = state.m1;
-    const SAT = ['Terra', 'Aqua', 'Suomi NPP'], CONF = ['low', 'nominal', 'high'];
-    const out = tableSink(write);
-    out.begin(['latitude', 'longitude', 'acq_date', 'satellite', 'instrument', 'confidence', 'frp', 'daynight', 'type', 'harmonized_weight']);
-    await walk(state.sel, true, {
-      points(t, dv, n, keep) {
-        const rows = [];
-        for (let i = 0, o = 0; i < n; i++, o += REC) {
-          const la = dv.getUint16(o, true), lo = dv.getUint16(o + 2, true);
-          if (keep && !keep(la, lo)) continue;
-          const day = dv.getUint16(o + 4, true), m = data.dayMonth[day];
-          if (m < m0 || m > m1) continue;
-          const fl = dv.getUint8(o + 8), sat = fl & 3, viirs = sat === 2, era = inViirsEra(m);
-          // Weight = this detection's contribution to the harmonized count.
-          const weight = viirs ? (era ? 1 : 0) : era ? 0 : +(m < ix.aquaStart ? t.rT : t.rM)[m % 12].toFixed(4);
-          rows.push([+(t.la + la / 65535).toFixed(5), +(t.lo + lo / 65535).toFixed(5),
-            { date: new Date(Date.UTC(2000, 0, 1 + day)).toISOString().slice(0, 10) },
-            SAT[sat], viirs ? 'VIIRS' : 'MODIS', CONF[fl >> 5 & 3], dv.getUint16(o + 6, true) / 10, fl & 4 ? 'N' : 'D', fl >> 3 & 3, weight]);
-        }
-        out.rows(rows);
-      }
-    }, (d, n) => { btn.textContent = `Preparing… ${Math.round(d / n * 100)}%`; });
-    btn.textContent = 'Saving…';
-    await out.end();
-  }
 });
 
 $('dlPng').onclick = () => runDownload($('dlPng'), fileStem() + (state.view === 'anom' ? '_anomaly' : '_calendar') + '.png', async write => {

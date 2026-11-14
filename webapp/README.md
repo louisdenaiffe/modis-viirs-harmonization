@@ -17,7 +17,7 @@ How everything works, step by step and in plain words: [HOW_IT_WORKS.md](HOW_IT_
 | Deselect | Click anywhere outside the selection, or **Clear** |
 | Choose dates | From / To (month and year), or **Last 12 months** / **All** |
 | Monthly fire map | Bottom-left bar: drag the month cursor, type a year |
-| Downloads | Monthly table (CSV), every hotspot in the search (CSV), charts (PNG) |
+| Downloads | Monthly table (CSV), charts (PNG) |
 
 ## Run it on your computer
 

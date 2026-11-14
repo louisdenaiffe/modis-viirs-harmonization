@@ -95,8 +95,6 @@ not correct for MODIS sensor ageing or for individual satellite outages.
 
 ### 6. Downloads (`app.js` section 7)
 - Monthly table (CSV): raw MODIS, raw VIIRS and harmonized value for every month.
-- Hotspots in the search (CSV): every detection, with a `harmonized_weight` column
-  (limited to 500,000 rows).
 - Calendar and charts (PNG).
 
 ### 7. The current year (`tools/legacy/fetch_nrt.py`, then `tools/fetch_nrt_world.py`)
