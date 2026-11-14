@@ -18,6 +18,11 @@ Harmonization: VIIRS is the reference. For every 1-degree tile and month of the 
 ratio = VIIRS / MODIS hotspots over the months both sensors cover. Sparse tiles are pulled
 toward their 10-degree block's ratio, and blocks toward the global ratio (K pseudo-counts).
 A second ratio (VIIRS / Terra) is used before Aqua's first data in July 2002.
+
+VIIRS outages: on days when the VIIRS satellite sent little or no data (for example
+10-12 March 2026), the harmonized count of each affected 10-degree block uses that day's
+MODIS hotspots multiplied by the ratio, exactly as for the years before VIIRS. See
+find_gaps() below. Raw MODIS and VIIRS counts are never changed.
 """
 import json
 import os
@@ -118,6 +123,41 @@ def by_moy(a, lo, hi):
     return out
 
 
+GAP_DAY = 0.5      # a day is an outage day when VIIRS/MODIS falls below half its usual value
+GAP_BLOCK = 0.5    # ...and a block is filled that day when its VIIRS count is below half of
+                   # what its MODIS count predicts
+GAP_MIN_MODIS = 500  # ignore days with too few MODIS detections worldwide to judge
+
+
+def find_gaps(daycounts, block_ratio, viirs_first_day, viirs_last_day):
+    """Find (block, day) pairs where VIIRS data is missing.
+
+    daycounts: {key: (D, 2) array of MODIS, VIIRS hotspots per day}
+    block_ratio: {key: (12,) VIIRS/MODIS ratio of the block by month of year}
+    Step 1, worldwide: each day's VIIRS/MODIS ratio is compared with the median of the
+    15 days around it; a day far below (under GAP_DAY) is an outage day.
+    Step 2, per block: on an outage day, a block whose VIIRS count is under GAP_BLOCK of
+    what its MODIS count predicts is marked as missing (this catches partial outages,
+    when only some orbits are lost).
+    """
+    D = next(iter(daycounts.values())).shape[0]
+    tot = sum(daycounts.values())
+    gm, gv = tot[:, 0].astype(float), tot[:, 1].astype(float)
+    r = pd.Series(np.where(gm >= GAP_MIN_MODIS, gv / np.maximum(gm, 1), np.nan))
+    med = r.rolling(15, center=True, min_periods=5).median().to_numpy()
+    days = np.arange(D)
+    bad = (days >= viirs_first_day) & (days <= viirs_last_day) & (gm >= GAP_MIN_MODIS) & (r.to_numpy() < GAP_DAY * med)
+    bad_days = np.flatnonzero(bad)
+    moy = ((EPOCH + bad_days).astype("datetime64[M]").astype(int)) % 12
+    gaps = {}
+    for key, dc in daycounts.items():
+        m, v = dc[bad_days, 0], dc[bad_days, 1]
+        hit = (m > 0) & (v < GAP_BLOCK * block_ratio[key][moy] * m)
+        if hit.any():
+            gaps[key] = bad_days[hit]
+    return bad_days, gaps
+
+
 def main():
     if len(sys.argv) < 3:
         sys.exit(__doc__)
@@ -152,13 +192,16 @@ def main():
     keys = sorted({int(f.split(".")[0]) for f in os.listdir(tmp)})
 
     # ---- pass 2a: monthly counts per tile and satellite, needed for the ratios ----
-    counts = {}
+    counts, daycounts = {}, {}
+    D = dmax + 1
     for key in keys:
         rec = load_block(tmp, key)
         bla, blo = (key // 36 - 9) * 10, (key % 36 - 18) * 10
         t = (rec["la"].astype(np.int32) - bla) * 10 + (rec["lo"].astype(np.int32) - blo)
         idx = (t * 3 + (rec["fl"] & 3)) * M + month_of[rec["day"]]
         counts[key] = np.bincount(idx, minlength=100 * 3 * M).reshape(100, 3, M)
+        daycounts[key] = np.bincount(rec["day"].astype(np.int64) * 2 + ((rec["fl"] & 3) == 2),
+                                     minlength=2 * D).reshape(D, 2)
     print(f"pass 2a done in {time.time() - t0:.0f}s", flush=True)
 
     def ratios(c):                       # c: (..., 3, M) -> VIIRS, MODIS, Terra sums by month of year
@@ -172,6 +215,21 @@ def main():
     safe = lambda a, b, alt: np.where(b > 0, a / np.maximum(b, 1), alt)
     g_rm = safe(gv, gm, gv.sum() / max(gm.sum(), 1))
     g_rt = safe(gv, gt, gv.sum() / max(gt.sum(), 1))
+
+    # ---- VIIRS outages: which blocks are missing VIIRS data on which days ----
+    b_ratio = {}
+    for key, c in counts.items():
+        bv, bm, _ = ratios(c.sum(0))
+        b_ratio[key] = (bv + K * g_rm) / (bm + K)
+    first_vday = int(np.argmax(month_of >= VIIRS_START))
+    last_vday = int(np.flatnonzero(month_of <= viirs_end)[-1]) if viirs_end >= 0 else -1
+    bad_days, gaps = find_gaps(daycounts, b_ratio, first_vday, last_vday)
+    del daycounts
+    gap_months = sorted({int(month_of[d]) for ds in gaps.values() for d in ds})
+    gi_of = np.full(M, -1, np.int64)
+    gi_of[gap_months] = np.arange(len(gap_months))
+    G = len(gap_months)
+    print(f"VIIRS outages: {len(bad_days)} days, {sum(len(v) for v in gaps.values())} block-days filled with MODIS", flush=True)
 
     # ---- pass 2b: write tiles, block indexes and fire-map grids ----
     coarse, blocks_meta = [], []
@@ -200,7 +258,11 @@ def main():
         m = month_of[rec["day"]]
         sat = rec["fl"] & 3
         moy = m % 12
-        era = in_v_month[m]
+        gapday = np.zeros(D + 1, bool)
+        if key in gaps:
+            gapday[gaps[key]] = True
+        gap = gapday[rec["day"]]
+        era = in_v_month[m] & ~gap          # VIIRS-era months, except days VIIRS was missing here
         w = np.where(sat == 2, era, np.where(era, 0, np.where(m < AQUA_START, r_t[t, moy], r_m[t, moy]))).astype(np.float32)
 
         mod = c[:, 0, :] + c[:, 1, :]
@@ -223,6 +285,11 @@ def main():
                     for sel in (is_mod, ~is_mod):
                         cs = np.bincount(cc[sel] * M + mm[sel], minlength=k * k * M)
                         fh.write(np.minimum(cs, 65535).astype("<u2").tobytes())
+                    if G:   # per cell and outage month: VIIRS, then MODIS hotspots on outage days
+                        gg = gap[a:b] & (gi_of[mm] >= 0)
+                        for sel in (gg & ~is_mod, gg & is_mod):
+                            cs = np.bincount(cc[sel] * G + gi_of[mm[sel]], minlength=k * k * G)
+                            fh.write(np.minimum(cs, 65535).astype("<u2").tobytes())
                 fh.write(pts.tobytes())
             trec[j] = (la, lo, k, 0, n_tile[ti], r_m[ti], r_t[ti])
             series += mod[ti].astype("<u4").tobytes() + vii[ti].astype("<u4").tobytes() + harm[ti].astype("<f4").tobytes()
@@ -258,7 +325,7 @@ def main():
         with open(os.path.join(out, "heat1", f"{bla}_{blo}.bin"), "wb") as fh:
             fh.write(offs.tobytes() + h.tobytes())
 
-        del rec, t, cell, m, sat, w, g0, g1
+        del rec, t, cell, m, sat, w, g0, g1, gap
         for f in os.listdir(tmp):
             if f.split(".")[0] == str(key):
                 os.remove(os.path.join(tmp, f))
@@ -286,6 +353,11 @@ def main():
         "heat0": HEAT0, "heat1": HEAT1,
         "global": {"rM": [round(float(x), 4) for x in g_rm], "rT": [round(float(x), 4) for x in g_rt]},
         "blocks": blocks_meta,
+        # VIIRS outages filled with converted MODIS: the months concerned (tile files carry
+        # extra per-cell counts for these) and, per block, the days filled.
+        "gapMonths": gap_months,
+        "gapDays": [iso(d) for d in bad_days],
+        "gaps": {f"{(k // 36 - 9) * 10}_{(k % 36 - 18) * 10}": [int(d) for d in v] for k, v in gaps.items()},
     }
     with open(os.path.join(out, "meta.json"), "w") as fh:
         json.dump(meta, fh, separators=(",", ":"))

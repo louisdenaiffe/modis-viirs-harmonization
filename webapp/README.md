@@ -13,7 +13,7 @@ How everything works, step by step and in plain words: [HOW_IT_WORKS.md](HOW_IT_
 |---|---|
 | Spin / zoom | Drag / scroll |
 | Select a rectangle | Hold **Shift** and drag, or press **Select** and drag |
-| Select a whole country | **Shift + click** on it |
+| Select a whole country | **Shift + click** on it, or press **Select** and tap it (phones) |
 | Deselect | Click anywhere outside the selection, or **Clear** |
 | Choose dates | From / To (month and year), or **Last 12 months** / **All** |
 | Monthly fire map | Bottom-left bar: drag the month cursor, type a year |

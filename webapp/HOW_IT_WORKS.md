@@ -36,7 +36,7 @@ You spin a globe, draw a rectangle, and get a burning-activity calendar for that
 - Orange corner dots resize it; exact coordinates can be typed in the panel.
 
 ### 2b. Selecting a whole country (Shift + click)
-- Hold **Shift and click** (without dragging) on a country: its border is outlined and
+- Hold **Shift and click** (without dragging) on a country, or on a phone press **Select** and tap it: its border is outlined and
   the panel shows the hotspots inside that border. A plain click elsewhere deselects it.
 - Borders come from Natural Earth 1:50,000,000 (public domain), stored in
   `geo/countries.json` (242 countries).
@@ -152,8 +152,29 @@ outlined in the table, left out of the medians, and left out of the harmonizatio
   5,000 credits allowed per 10 minutes, so `fetch_nrt_world.py` paces itself (about an
   hour). It keeps only points inside a country (Natural Earth outline) to match the
   archives; checked against 10 July 2025, it agrees with the archive within 0.3%.
-- Known gap: the VIIRS satellite has outage days in 2026 (for example 10-12 March, half
-  of 10 July). Those months are slightly undercounted.
+- VIIRS outages are filled with MODIS (see section 12).
+
+### 12. Filling the VIIRS outage days (`tools/build_world.py`, `find_gaps`)
+Some days the VIIRS satellite sends little or no data. The build finds 60 such days
+between 2012 and 2026, for example 10-16 July and 24-29 July 2024, and in 2026: 10-12 March,
+28-30 April, 1-2 June, 10-16 July, 3-4 and 18 August, 12-13 October. Counting VIIRS alone would make
+those months look calmer than they were. MODIS kept flying, so we use it to fill the hole.
+1. **Find the bad days, worldwide.** For every day we divide the VIIRS count by the MODIS
+   count (normally about 4 to 5). A day whose ratio falls below half of the median of the
+   15 days around it is an outage day.
+2. **Find where, for partial outages.** On an outage day, each 10-degree block is checked:
+   if its VIIRS count is less than half of what its MODIS count predicts, that block is
+   marked as missing VIIRS for that day. On a full outage every block is marked; on a
+   partial one (a few lost orbits) only the blocks under those orbits.
+3. **Fill.** For those block-days the harmonized count uses that day's MODIS hotspots times
+   the local VIIRS/MODIS ratio, exactly as for the years before VIIRS. Raw counts are not
+   changed.
+- Checked: on full-outage days the filled totals match the expected worldwide VIIRS count
+  within about 5%. In 2026 the fill adds about 820,000 VIIRS-equivalent hotspots (5%).
+  Over the whole record, 7,505 block-days are filled. Example, central Africa: July 2026
+  goes up by 20% (VIIRS missing about 7 of 31 days); months without outages do not change.
+- The app's monthly table CSV marks those months as "VIIRS + MODIS scaled on VIIRS outage
+  days", and the source line under the panel lists the outage days.
 
 ### 11. The charts in the panel (and what each answers)
 | Chart | Question it answers |
@@ -166,8 +187,8 @@ outlined in the table, left out of the medians, and left out of the harmonizatio
 ## Current limits
 - Data: the whole world, 2000 to 14 November 2026 (411 million hotspots).
 - The harmonization is a statistical scaling of counts, not a physical model (see section 4).
-- The VIIRS satellite has outage days in 2026 (for example 10-12 March, half of 10 July).
-  Those months are slightly undercounted.
+- VIIRS outage days are filled with converted MODIS (section 12): a good estimate, but
+  an estimate. The ratios still include those days, which lowers them by under 1%.
 - A country's counts follow Natural Earth's 1:50m border, which differs slightly from
   NASA's own country files (0.06% for Argentina).
 

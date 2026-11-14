@@ -154,8 +154,15 @@
   @media (max-width: 760px) {
     :root { --panel-w: 100vw; }
     #timebar { bottom: 64px; }
+    /* The month caption gets its own line instead of being cut to a letter. */
+    #timebar .row { flex-wrap: wrap; row-gap: 4px; }
+    #heatCaption { order: 9; flex-basis: 100%; white-space: normal; }
     #readout { bottom: 172px; }
     #panel { top: 42%; border-left: 0; border-top: 1px solid var(--border); transform: translateY(100%); }
+    /* The calendar keeps readable cells and scrolls sideways instead of squeezing the numbers. */
+    .calwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table.cal { min-width: 600px; }
+    table.cal th.y, table.cal td.y { position: sticky; left: 0; background: var(--surface); z-index: 1; }
   }
 </style>
 </head>
@@ -167,7 +174,7 @@
 <div id="tools">
   <div class="row">
     <input id="search" type="search" placeholder="Search a place, or type lat, lon" autocomplete="off" aria-label="Search a place or coordinates">
-    <button id="selectBtn" title="Draw a selection rectangle (or hold Shift and drag). Shift + click selects a whole country.">Select</button>
+    <button id="selectBtn" title="Draw a selection rectangle (or hold Shift and drag). Shift + click, or Select then a tap, selects a whole country.">Select</button>
     <button id="clearBtn" title="Remove the selection">Clear</button>
   </div>
   <ul id="searchResults"></ul>
@@ -235,7 +242,7 @@
       <section>
         <h2 id="calTitle">Hotspots per month</h2>
         <div class="card">
-          <table class="cal" id="cal"></table>
+          <div class="calwrap"><table class="cal" id="cal"></table></div>
           <div class="ramp" id="ramp"></div>
         </div>
         <div class="note" id="calNote"></div>

@@ -215,11 +215,14 @@ function endDrag(cancel) {
   if (!drag) return;
   const d = drag; drag = null;
   if (cancel || !d.moved) {
+    // Shift + click, or a tap/click in Select mode (phones have no Shift key), without
+    // dragging: select the country under the cursor.
+    const country = !cancel && (d.shift || selectMode);
+    if (country && selectMode) setSelectMode(false);
     redrawSelection();
     mapEl.classList.toggle('selecting', selectMode);
     if (!selectMode) lockPan(false);
-    // Shift + click without dragging: select the country under the cursor.
-    if (!cancel && d.shift) selectCountryAt(d.start);
+    if (country) selectCountryAt(d.start);
     return;
   }
   setSelectMode(false);
@@ -383,6 +386,11 @@ const ready = (async () => {
     data.dayMonth[d] = (dt.getUTCFullYear() - 2000) * 12 + dt.getUTCMonth();
   }
   data.era = Uint8Array.from({ length: M }, (_, m) => +(m >= ix.viirsStart && m <= ix.viirsEnd));
+  // VIIRS outage days (filled with converted MODIS): per 10-degree block, the days concerned,
+  // and the months for which tile files carry extra per-cell counts.
+  data.gaps = new Map(Object.entries(ix.gaps || {}).map(([k, days]) => [k, new Set(days)]));
+  data.gapIdx = new Int16Array(M).fill(-1);
+  (ix.gapMonths || []).forEach((m, i) => { data.gapIdx[m] = i; });
   const [fy, fm] = ix.firstDate.split('-').map(Number);
   const [ly, lm, ld] = ix.lastDate.split('-').map(Number);
   ix.firstMonth = (fy - 2000) * 12 + fm - 1;
@@ -400,6 +408,10 @@ async function fetchRange(url, start, end) {
   return r.status === 206 ? buf : buf.slice(start, end);
 }
 const inViirsEra = m => data.era[m] === 1;
+// The outage days of the 10-degree block a tile belongs to (null when it has none).
+const gapsOf = t => (t.gap !== undefined ? t.gap : (t.gap = data.gaps.get(`${Math.floor(t.la / 10) * 10}_${Math.floor(t.lo / 10) * 10}`) || null));
+// Does a hotspot of tile t seen on this day (in month m) count as VIIRS-era? Not on an outage day.
+const viirsDay = (t, day, m) => data.era[m] === 1 && !(gapsOf(t) && t.gap.has(day));
 
 function loadBlock(blk) {
   if (!blk.tiles) blk.tiles = fetch(`data/blocks/${blk.key}.bin`).then(r => r.arrayBuffer()).then(buf => {
@@ -417,10 +429,13 @@ function loadBlock(blk) {
 // A split tile starts with a directory (where each cell's hotspots begin) and per-cell monthly counts.
 function loadHead(t) {
   if (!t.head) {
-    const k2 = t.k * t.k, M = data.index.months, len = 4 * (k2 + 1) + 4 * k2 * M;
+    const k2 = t.k * t.k, M = data.index.months, G = (data.index.gapMonths || []).length;
+    const base = 4 * (k2 + 1) + 4 * k2 * M, len = base + 4 * k2 * G;
     t.head = fetchRange(`data/tiles/${t.key}.bin`, 0, len).then(buf => ({
-      len, dir: new Uint32Array(buf, 0, k2 + 1),
-      mod: new Uint16Array(buf, 4 * (k2 + 1), k2 * M), vii: new Uint16Array(buf, 4 * (k2 + 1) + 2 * k2 * M, k2 * M)
+      len, G, dir: new Uint32Array(buf, 0, k2 + 1),
+      mod: new Uint16Array(buf, 4 * (k2 + 1), k2 * M), vii: new Uint16Array(buf, 4 * (k2 + 1) + 2 * k2 * M, k2 * M),
+      // Per cell and outage month: VIIRS and MODIS hotspots seen on that block's outage days.
+      vgap: new Uint16Array(buf, base, k2 * G), mgap: new Uint16Array(buf, base + 2 * k2 * G, k2 * G)
     }));
   }
   return t.head;
@@ -583,15 +598,20 @@ async function query(sel, onProgress) {
       for (let m = 0, o = c * M; m < M; m++, o++) {
         const mod = head.mod[o], v = head.vii[o];
         out.modis[m] += mod; out.viirs[m] += v; out.check[m] += mod * ratio(t, m);
-        if (era[m]) { out.raw[m] += v; out.harm[m] += v; } else { out.raw[m] += mod; out.harm[m] += mod * ratio(t, m); }
+        if (era[m]) {
+          out.raw[m] += v; out.harm[m] += v;
+          // VIIRS outage days in this month: their MODIS hotspots, converted, replace VIIRS.
+          const g = data.gapIdx[m];
+          if (g >= 0) { const o2 = c * head.G + g; out.harm[m] += head.mgap[o2] * ratio(t, m) - head.vgap[o2]; }
+        } else { out.raw[m] += mod; out.harm[m] += mod * ratio(t, m); }
       }
     },
     points(t, dv, n, keep) {
       for (let i = 0, o = 0; i < n; i++, o += REC) {
         if (keep && !keep(dv.getUint16(o, true), dv.getUint16(o + 2, true))) continue;
-        const m = data.dayMonth[dv.getUint16(o + 4, true)];
-        if ((dv.getUint8(o + 8) & 3) === 2) { out.viirs[m]++; if (era[m]) { out.raw[m]++; out.harm[m]++; } }
-        else { out.modis[m]++; out.check[m] += ratio(t, m); if (!era[m]) { out.raw[m]++; out.harm[m] += ratio(t, m); } }
+        const day = dv.getUint16(o + 4, true), m = data.dayMonth[day], vd = viirsDay(t, day, m);
+        if ((dv.getUint8(o + 8) & 3) === 2) { out.viirs[m]++; if (era[m]) out.raw[m]++; if (vd) out.harm[m]++; }
+        else { out.modis[m]++; out.check[m] += ratio(t, m); if (!era[m]) out.raw[m]++; if (!vd) out.harm[m] += ratio(t, m); }
       }
     }
   }, onProgress);
@@ -796,8 +816,10 @@ function setStatus(msg) { $('status').hidden = !msg; $('status').textContent = m
 function openPanel(open) {
   $('panel').classList.toggle('open', open);
   $('panelTab').classList.toggle('show', !open && !!state.sel);
-  const w = open && innerWidth > 760 ? $('panel').offsetWidth : 0;
-  map.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: w }, duration: 300 });
+  // Keep the globe's centre in the part of the screen the panel leaves free: on the right of a
+  // wide screen, above the bottom sheet on a phone.
+  const wide = innerWidth > 760, w = open && wide ? $('panel').offsetWidth : 0, h = open && !wide ? innerHeight * 0.58 : 0;
+  map.easeTo({ padding: { top: 0, bottom: h, left: 0, right: w }, duration: 300 });
 }
 $('panelClose').onclick = () => openPanel(false);
 $('panelTab').onclick = () => openPanel(true);
@@ -1041,7 +1063,8 @@ function render() {
     ? `This search holds ${nf(rawPts)} hotspots, too many for one file (the limit is ${nf(MAX_POINTS)}).`
     : `The hotspot file will contain ${nf(rawPts)} rows, about ${mb} MB (every MODIS and VIIRS detection in the area and dates chosen).`;
   $('sourceNote').textContent = `Source: NASA FIRMS archive (MODIS Collection 6.1, VIIRS S-NPP 375 m), ${md.ix.coverage}, ` +
-    `${md.ix.firstDate} to ${md.ix.lastDate}. Harmonization ratios measured over Feb 2012 – ${MONTHS[md.ix.overlap[1] % 12]} ${2000 + Math.floor(md.ix.overlap[1] / 12)}.`;
+    `${md.ix.firstDate} to ${md.ix.lastDate}. Harmonization ratios measured over Feb 2012 – ${MONTHS[md.ix.overlap[1] % 12]} ${2000 + Math.floor(md.ix.overlap[1] / 12)}.` +
+    ((md.ix.gapDays || []).length ? ` VIIRS outage days (${md.ix.gapDays.length}, e.g. ${md.ix.gapDays.slice(-3).join(', ')}) are filled with converted MODIS.` : '');
 }
 
 /* ================= 6. Charts (plain SVG) ================= */
@@ -1358,7 +1381,7 @@ $('dlTable').onclick = () => runDownload($('dlTable'), `${fileStem()}_monthly.cs
   const rows = [];
   for (const row of md.rows) for (const c of row.cells) if (c.exists) {
     rows.push([row.y, c.m % 12 + 1, r.modis[c.m], r.viirs[c.m], +r.harm[c.m].toFixed(1),
-      inViirsEra(c.m) ? 'VIIRS' : 'MODIS scaled', c.partial ? 'no' : 'yes']);
+      inViirsEra(c.m) ? (data.gapIdx[c.m] >= 0 ? 'VIIRS + MODIS scaled on VIIRS outage days' : 'VIIRS') : 'MODIS scaled', c.partial ? 'no' : 'yes']);
   }
   out.rows(rows);
   await out.end();
@@ -1394,7 +1417,7 @@ $('dlPoints').onclick = () => state.rawPoints > MAX_POINTS ? tooManyPoints() : r
           if (keep && !keep(la, lo)) continue;
           const day = dv.getUint16(o + 4, true), m = data.dayMonth[day];
           if (m < m0 || m > m1) continue;
-          const fl = dv.getUint8(o + 8), sat = fl & 3, viirs = sat === 2, era = inViirsEra(m);
+          const fl = dv.getUint8(o + 8), sat = fl & 3, viirs = sat === 2, era = viirsDay(t, day, m);
           // Weight = this detection's contribution to the harmonized count.
           const weight = viirs ? (era ? 1 : 0) : era ? 0 : +(m < ix.aquaStart ? t.rT : t.rM)[m % 12].toFixed(4);
           rows.push([+(t.la + la / 65535).toFixed(5), +(t.lo + lo / 65535).toFixed(5),
