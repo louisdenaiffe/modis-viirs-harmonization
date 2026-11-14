@@ -17,8 +17,8 @@ You spin a globe, draw a rectangle, and get a burning-activity calendar for that
    the old MODIS counts by that ratio. Every year is then expressed in "VIIRS-equivalent
    hotspots".
 4. **App.** The page reads the prepared data directly in the browser (no server), adds up
-   the hotspots inside your rectangle per month, and shows a calendar, an anomaly view, two
-   charts and download buttons.
+   the hotspots inside your rectangle (or country) per month, and shows a calendar, an anomaly
+   view, three charts, a month-by-month fire map and download buttons.
 
 ## Step by step
 
@@ -47,8 +47,9 @@ You spin a globe, draw a rectangle, and get a burning-activity calendar for that
   Argentina matches NASA's own Argentina file to 99.94% (the small gap is the difference
   between NASA's border and Natural Earth's).
 
-### 3. Preparing the data (`tools/legacy/build_tiles.py`, then `tools/build_world.py` for the world)
-Run once, in Python, with no extra packages:
+### 3. Preparing the data (`tools/build_world.py`; the first Argentina-only version is `tools/legacy/build_tiles.py`)
+Run once, in Python, with no extra packages. The text below describes the first Argentina-only
+version; the world version (section 10) works the same way with finer squares where fires are dense:
 
     python3 -I tools/legacy/build_tiles.py data/raw/argentina data Argentina   (first version; the world uses tools/build_world.py)
 
@@ -81,21 +82,23 @@ Limits to be honest about: this is a statistical scaling of counts, not a physic
 It assumes the VIIRS/MODIS relationship of 2012-2025 also held in 2000-2011, and it does
 not correct for MODIS sensor ageing or for individual satellite outages.
 
-### 5. The panel (`app.js` sections 5-6)
-- **Calendar:** years as rows, months as columns. Colour is a single blue ramp on a log
-  scale (dark = few, light = many), readable with colour-blindness.
+### 5. The panel (`app.js`)
+- **Calendar:** years as rows, months as columns. In the **Harmonized** view the colour runs
+  from dark red (few hotspots) through orange to yellow (many), on a log scale.
+- **Raw view:** the colour tells you which satellite the number comes from, the shade how
+  many hotspots. Purple shades = MODIS (before February 2012), teal shades = VIIRS (from
+  February 2012), darker = fewer, lighter = more, on the same scale for both.
 - **Anomaly view:** each month compared with the median of the same month across the
   chosen years. Blue = below normal, grey = normal, red = above normal.
 - **Headline figures:** total, most active year, peak month of the season, latest month
   against its median.
-- **Fire season chart:** median and the middle half of years (25th to 75th percentile),
-  with the latest year on top.
-- **Hotspots per year** bar chart.
-- Year range can be narrowed with the From / To menus.
+- **Charts:** unusual years, monthly record, fire season with its critical period (table in
+  section 11).
+- The date range is chosen month by month (From / To), or with **Last 12 months** / **All**.
 
-### 6. Downloads (`app.js` section 7)
-- Monthly table (CSV): raw MODIS, raw VIIRS and harmonized value for every month.
-- Calendar and charts (PNG).
+### 6. Downloads (`app.js`)
+- **Monthly table (CSV):** raw MODIS, raw VIIRS and harmonized value for every month.
+- **PNG:** the calendar and the charts as one picture.
 
 ### 7. The current year (`tools/legacy/fetch_nrt.py`, then `tools/fetch_nrt_world.py`)
 NASA's yearly archive files stop at the end of last year. For 2026 the script asks the
@@ -118,15 +121,16 @@ outlined in the table, left out of the medians, and left out of the harmonizatio
 - **Selection readout:** area, size and corner coordinates, live while you drag.
 
 ### 9. The fire map (month slider and year box)
-- `build_tiles.py` also writes `data/heat/<year>.bin`: for every month, the harmonized
-  hotspot count in each 0.05 degree cell (about 5 km). One small file per year, 7 MB in all.
+- The build writes yearly heat files (`data/heat0/`, `data/heat1/`): for every month, the
+  harmonized hotspot count in each small map cell.
 - In the app, the bar at the bottom left has a slider with the 12 months and a box where
   you type the year. Changing either loads that year's file and redraws the map.
-- The glow is MapLibre's "heatmap" layer: each cell adds a soft red spot, and where many
-  hotspots sit close together the colour climbs from dark red to bright red to pale pink.
-  The strength uses a log scale, so one huge fire does not hide the smaller ones.
-- The satellite picture is dimmed while the fire map is on so the reds stand out.
-- The calendar table uses the same idea in red: darker = fewer hotspots, lighter = more.
+- The colours come from MapLibre's "heatmap" layer: where many hotspots sit close together
+  the colour climbs from dark red to red to orange to yellow. The strength uses a log scale,
+  so one huge fire does not hide the smaller ones.
+- **Play** animates the whole world from November 2000 to the latest month (2x speed) with a
+  fixed colour scale, so months can be compared. Pause, or touch the slider, to stop.
+- The calendar table uses the same fire colours: darker = fewer hotspots, lighter = more.
 
 ### 10. The whole world (`tools/build_world.py`, `tools/fetch_nrt_world.py`)
 - Source: NASA FIRMS country archives for every country, MODIS 2000-2025 and VIIRS
@@ -155,10 +159,12 @@ outlined in the table, left out of the medians, and left out of the harmonizatio
 | Fire season + critical period | Which months see most fires? The shaded critical period is the shortest run of consecutive months holding at least 80% of a typical year's hotspots (it may run over New Year). |
 
 ## Current limits
-- Data loaded: **Argentina only**, to mid-November 2026. A selection that spills into a
-  neighbouring country only counts the Argentine part.
-- 1-degree tiles are fine for one country; the whole world will need smaller tiles in
-  the busiest regions (central Africa, Brazil).
+- Data: the whole world, 2000 to 14 November 2026 (411 million hotspots).
+- The harmonization is a statistical scaling of counts, not a physical model (see section 4).
+- The VIIRS satellite has outage days in 2026 (for example 10-12 March, half of 10 July).
+  Those months are slightly undercounted.
+- A country's counts follow Natural Earth's 1:50m border, which differs slightly from
+  NASA's own country files (0.06% for Argentina).
 
 ## Run it
 

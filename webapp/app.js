@@ -778,10 +778,16 @@ const SEQ = ['#4a0d06', '#8a1609', '#c4240d', '#e8471a', '#f37a22', '#f9a72f', '
 const textOn = rgb => { const [r, g, b] = rgb.match(/\d+/g).map(Number); return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#0b0b0b' : '#f0efec'; };
 const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const mix = (a, b, t) => { const A = hex(a), B = hex(b); return 'rgb(' + A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',') + ')'; };
-function seqColor(t) {
-  const x = Math.max(0, Math.min(1, t)) * (SEQ.length - 1), i = Math.min(SEQ.length - 2, Math.floor(x));
-  return mix(SEQ[i], SEQ[i + 1], x - i);
+// Raw view: the colour says which satellite the number comes from (purple = MODIS, teal = VIIRS)
+// and the shade says how many hotspots, dark (few) to light (many), on the same log scale.
+const MODIS_SEQ = ['#1d0f35', '#3a1d6e', '#5a2fa3', '#7c4dd0', '#9d78e3', '#c0a5f2', '#e2d3fb'];
+const VIIRS_SEQ = ['#042b2f', '#094d55', '#0e767f', '#16a0a3', '#3cc4bb', '#7fe0cf', '#c6f6e9'];
+function seqColor(t, ramp = SEQ) {
+  const x = Math.max(0, Math.min(1, t)) * (ramp.length - 1), i = Math.min(ramp.length - 2, Math.floor(x));
+  return mix(ramp[i], ramp[i + 1], x - i);
 }
+// Ramp for one month of the calendar: fire colours when harmonized, sensor colours when raw.
+const rampFor = m => state.mode === 'harm' ? SEQ : (data.era[m] ? VIIRS_SEQ : MODIS_SEQ);
 const divColor = d => mix('#383835', d < 0 ? '#3987e5' : '#e66767', Math.min(1, Math.abs(d)));
 // Anomaly on a log scale: -1 means a quarter of normal or less, +1 means four times normal or more.
 const anomScore = (v, med) => Math.max(-1, Math.min(1, Math.log2((v + 1) / (med + 1)) / 2));
@@ -917,7 +923,7 @@ function render() {
 
   $('modeNote').textContent = harm
     ? 'Harmonized: MODIS years (before Feb 2012) are scaled to what VIIRS would have detected, so every year is comparable.'
-    : 'Raw: MODIS counts before Feb 2012, VIIRS counts after, with no correction. The jump in 2012 is the sensor change, not more fire.';
+    : 'Raw: MODIS counts before Feb 2012, VIIRS counts after, with no correction. The jump in 2012 is the sensor change, not more fire. Purple = MODIS, teal = VIIRS; darker = fewer hotspots, lighter = more.';
 
   // --- headline figures ---
   const k = $('kpis'); k.textContent = '';
@@ -954,8 +960,9 @@ function render() {
         td.style.fontSize = '10px';
       } else {
         const tt = md.heat(c.v);
-        if (c.v > 0) td.style.background = seqColor(tt);
-        bright = c.v > 0 && textOn(seqColor(tt)) === '#0b0b0b';
+        const col = seqColor(tt, rampFor(c.m));
+        if (c.v > 0) td.style.background = col;
+        bright = c.v > 0 && textOn(col) === '#0b0b0b';
         td.textContent = compact(c.v);
       }
       td.style.color = bright ? '#0b0b0b' : '#f0efec';
@@ -979,7 +986,13 @@ function render() {
     ramp.append('¼ of normal or less', bar, '4× normal or more');
   } else {
     bar.style.background = `linear-gradient(90deg,${SEQ.join(',')})`;
-    ramp.append(compact(md.min), bar, compact(md.max) + ' (log scale)');
+    if (harm) ramp.append(compact(md.min), bar, compact(md.max) + ' (log scale)');
+    else {
+      const bar2 = el('i'), dot = (c, t) => el('b', { textContent: t, style: `color:${c};font-weight:600` });
+      bar.style.background = `linear-gradient(90deg,${MODIS_SEQ.join(',')})`;
+      bar2.style.background = `linear-gradient(90deg,${VIIRS_SEQ.join(',')})`;
+      ramp.append(compact(md.min), dot('#9d78e3', 'MODIS'), bar, dot('#3cc4bb', 'VIIRS'), bar2, compact(md.max) + ' (log scale)');
+    }
   }
   $('calNote').textContent = (anom ? 'Each month is compared with the median of the same month over ' + rangeLabel() + '. ' : '') +
     (md.ix.partialMonth >= 0 ? 'The outlined month is incomplete and is left out of the medians. ' : '') +
@@ -1335,9 +1348,9 @@ $('dlPng').onclick = () => runDownload($('dlPng'), fileStem() + (state.view === 
     r.cells.forEach((cell, i) => {
       if (!cell.exists) { text('–', x0 + cw * (i + 0.5), y, '#383835', 12, 'center'); return; }
       const tt = md.heat(cell.v);
-      if (anom || cell.v > 0) { c.fillStyle = anom ? divColor(cell.score) : seqColor(tt); c.fillRect(x0 + cw * i + 1, y - 16, cw - 2, rowH - 2); }
+      if (anom || cell.v > 0) { c.fillStyle = anom ? divColor(cell.score) : seqColor(tt, rampFor(cell.m)); c.fillRect(x0 + cw * i + 1, y - 16, cw - 2, rowH - 2); }
       const label = anom ? (cell.anom === null ? (cell.v > 0 ? 'new' : '0') : pct(cell.anom)) : nf(cell.v);
-      text(label, x0 + cw * (i + 0.5), y, !anom && cell.v > 0 ? textOn(seqColor(tt)) : '#f0efec', 12, 'center');
+      text(label, x0 + cw * (i + 0.5), y, !anom && cell.v > 0 ? textOn(seqColor(tt, rampFor(cell.m))) : '#f0efec', 12, 'center');
     });
     text(nf(r.sum), W - 30, y, '#f0efec', 12, 'right', 600);
   }
