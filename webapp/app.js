@@ -57,7 +57,9 @@ const map = new maplibregl.Map({
       imagery: {
         type: 'raster', tileSize: 256, maxzoom: 18,
         tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-        attribution: 'Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community · Hotspots: NASA FIRMS'
+        attribution: 'Hotspots: NASA FIRMS (MODIS C6.1, VIIRS S-NPP) · Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community · ' +
+          'Borders: Natural Earth · Search: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (Nominatim) · ' +
+          'Built by the team with help from Claude, an AI coding assistant'
       },
       labels: {
         type: 'raster', tileSize: 256, maxzoom: 13,
@@ -449,6 +451,11 @@ let lastTouch = -Infinity, flying = false, lastFrame = performance.now();
 for (const ev of ['mousedown', 'wheel', 'touchstart', 'keydown'])
   addEventListener(ev, () => { lastTouch = performance.now(); }, { passive: true, capture: true });
 map.on('moveend', () => { flying = false; });
+// The credits are long: on narrower screens they start folded behind the (i) button, so they do
+// not run under the fire-map bar.
+map.once('load', () => {
+  if (innerWidth < 1200) document.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show');
+});
 // Ticking Auto-rotate starts the spin at once, even with something selected (zoomed in, it
 // first zooms out). The 6-second pause only applies to later touches of the globe.
 let rotateNow = false;
@@ -910,7 +917,7 @@ async function showHeat() {
     try { feats = await heatFeatures(m, blocks); } catch { feats = []; }
     if (token !== heat.token) return;
     const total = data.blockList.reduce((a, b) => a + b.harm[m], 0) * (state.unit === 'mEq' ? worldFactors()[moy] : 1);
-    note = Math.round(total).toLocaleString('en-US') + ' ' + UNITS[state.unit].long + (m === ix.partialMonth ? ' (incomplete month)' : '');
+    note = Math.round(total).toLocaleString('en-US') + ' ' + UNITS[state.unit].long;
     const p = blocks ? HEAT_PAINT.detail : HEAT_PAINT.world;
     // Strength relative to the busiest places this month (99th percentile), square-rooted so
     // medium activity still shows: quiet areas glow dark red, the busiest ones yellow.
@@ -924,7 +931,8 @@ async function showHeat() {
     map.setPaintProperty('heat', 'heatmap-radius', p.radius);
   }
   map.getSource('heat').setData({ type: 'FeatureCollection', features: feats });
-  $('heatWhen').textContent = `${MONTHS_LONG[moy]} ${year}`;
+  // The running month is marked next to its name, where it cannot be cut off.
+  $('heatWhen').textContent = `${MONTHS_LONG[moy]} ${year}` + (hasData && m === ix.partialMonth ? ', so far' : '');
   $('heatCaption').textContent = on ? note : 'Fire map hidden';
 }
 /* ----- Play: the world's fire map month by month, from the first to the last month ----- */

@@ -13,7 +13,7 @@ SITE="$(dirname "$APP")/fire-globe-site"
 
 rm -rf "$SITE"
 mkdir -p "$SITE"
-cp "$APP/index.html" "$APP/app.js" "$SITE/"
+cp "$APP/index.html" "$APP/app.js" "$APP/icon.svg" "$SITE/"
 rsync -a "$APP/vendor" "$APP/geo" "$SITE/"
 mkdir -p "$SITE/data"
 for item in meta.json coarse.bin countries.bin blocks tiles heat0 heat1; do
