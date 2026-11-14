@@ -904,10 +904,12 @@ function render() {
 
   const rawPts = md.rows.reduce((a, r) => a + r.cells.reduce((x, c) => x + (c.exists ? state.result.modis[c.m] + state.result.viirs[c.m] : 0), 0), 0);
   state.rawPoints = rawPts;
-  $('dlPoints').disabled = rawPts > MAX_POINTS || rawPts === 0;
+  // The button stays clickable even when the search is too big, so it never looks broken:
+  // clicking it then explains the limit and offers a smaller date range.
+  $('dlPoints').disabled = rawPts === 0;
   const mb = Math.max(1, Math.round(rawPts * 75 / 1e6));
   $('dlNote').textContent = rawPts > MAX_POINTS
-    ? `This search holds ${nf(rawPts)} individual hotspots; the hotspot file is limited to ${nf(MAX_POINTS)}. Select a smaller area or a shorter date range.`
+    ? `This search holds ${nf(rawPts)} hotspots, too many for one file (the limit is ${nf(MAX_POINTS)}).`
     : `The hotspot file will contain ${nf(rawPts)} rows, about ${mb} MB (every MODIS and VIIRS detection in the area and dates chosen).`;
   $('sourceNote').textContent = `Source: NASA FIRMS archive (MODIS Collection 6.1, VIIRS S-NPP 375 m), ${md.ix.coverage}, ` +
     `${md.ix.firstDate} to ${md.ix.lastDate}. Harmonization ratios measured over Feb 2012 – ${MONTHS[md.ix.overlap[1] % 12]} ${2000 + Math.floor(md.ix.overlap[1] / 12)}.`;
@@ -1210,7 +1212,7 @@ async function runDownload(btn, name, produce) {
     $('dlNote').textContent = `Could not save ${name}: ${e.message}`;
   } finally {
     btn.textContent = label;
-    btn.disabled = btn === $('dlPoints') && (state.rawPoints > MAX_POINTS || !state.rawPoints);
+    btn.disabled = btn === $('dlPoints') && !state.rawPoints;
   }
 }
 const fileStem = () => {
@@ -1233,7 +1235,22 @@ $('dlTable').onclick = () => runDownload($('dlTable'), `${fileStem()}_monthly.cs
   await out.end();
 });
 
-$('dlPoints').onclick = () => runDownload($('dlPoints'), `${fileStem()}_hotspots.csv`, async write => {
+// Too many hotspots: explain, and offer the largest recent date range that fits.
+function tooManyPoints() {
+  const r = state.result, note = $('dlNote'), last = Math.min(state.m1, data.index.lastMonth);
+  const pts = m => (r.modis[m] || 0) + (r.viirs[m] || 0);
+  let m0 = last, n = 0;
+  while (m0 >= state.m0 && n + pts(m0) <= MAX_POINTS) { n += pts(m0); m0--; }
+  m0++;
+  note.textContent = `This search holds ${nf(state.rawPoints)} hotspots, more than the ${nf(MAX_POINTS)} a browser can put in one file. ` +
+    'Choose a smaller area or a shorter date range. ';
+  if (m0 <= last) {
+    const b = el('a', { href: '#', className: 'savelink', textContent: `Use ${monthName(m0)} – ${monthName(last)} (${nf(n)} hotspots)` });
+    b.onclick = e => { e.preventDefault(); setRange(m0, last); };
+    note.append(b);
+  }
+}
+$('dlPoints').onclick = () => state.rawPoints > MAX_POINTS ? tooManyPoints() : runDownload($('dlPoints'), `${fileStem()}_hotspots.csv`, async write => {
   const btn = $('dlPoints'), ix = data.index;
   {
     const m0 = state.m0, m1 = state.m1;
