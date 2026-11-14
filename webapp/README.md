@@ -43,7 +43,8 @@ tools/
   fetch_nrt_world.py    downloads the current year from the FIRMS API (about 1 hour)
   serve.py              local server
   publish_to_team.sh    copies the app to the team GitHub branch (webapp/ folder) and pushes
-  deploy.sh             publishes the public website on Cloudflare Pages
+  deploy.sh             publishes the public website on Cloudflare (Workers static assets)
+  wrangler.jsonc        Cloudflare settings; worker.js answers partial-file requests for data/
   countries_50m.geojson outline used to keep only on-land detections from the API
   legacy/               first Argentina-only versions, kept for reference
 ```
@@ -59,7 +60,11 @@ python3 tools/build_world.py data/raw/world data/_build World \
   && rm -rf data/tiles data/blocks data/heat0 data/heat1 data/coarse.bin data/meta.json \
   && mv data/_build/* data/ && rmdir data/_build
 
-# 3. Share it
+# 3. Count every country once (country clicks are then instant online):
+#    with tools/serve.py running, open http://localhost:8765/?precompute and wait for
+#    "Saved data/countries.bin" in the bottom-left bar (about 20 seconds)
+
+# 4. Share it
 tools/publish_to_team.sh "What changed"     # code to GitHub
 tools/deploy.sh                             # code + data to the public website
 ```

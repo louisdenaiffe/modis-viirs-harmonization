@@ -265,7 +265,7 @@ $('clearBtn').onclick = () => commit(null);
 /* ----- Country selection: Shift + click ----- */
 // Outlines from Natural Earth 1:50m (public domain): [{ n: name, b: [w, s, e, n], p: polygons }].
 let currentCountry = null, countriesP = null;
-const loadCountries = () => countriesP || (countriesP = fetch('geo/countries.json').then(r => r.json()));
+const loadCountries = () => countriesP || (countriesP = fetch('geo/countries.json').then(r => r.json()).then(list => { list.forEach((c, i) => { c.i = i; }); return list; }));
 // Even-odd rule over every ring of every polygon (holes and islands handled alike).
 function ringsContain(polys, x, y) {
   let c = false;
@@ -535,10 +535,37 @@ async function walk(sel, wantPoints, h, onProgress) {
   return hit;
 }
 
+// Monthly totals of every country, worked out in advance (see precomputeCountries below), so a
+// country click is instant online instead of reading hundreds of files along its border.
+// Layout: n countries, M months, total hotspots (to spot an out-of-date file), then for each
+// country three runs of M floats: MODIS, VIIRS, harmonized.
+let countryTotalsP = null;
+function loadCountryTotals() {
+  if (!countryTotalsP) countryTotalsP = fetch('data/countries.bin').then(r => (r.ok ? r.arrayBuffer() : null)).then(buf => {
+    if (!buf || buf.byteLength < 16) return null;
+    const dv = new DataView(buf), n = dv.getUint32(0, true), M = dv.getUint32(4, true);
+    if (M !== data.index.months || dv.getFloat64(8, true) !== data.index.hotspots || buf.byteLength !== 16 + n * 3 * M * 4) return null;
+    return i => (i < n ? new Float32Array(buf, 16 + i * 3 * M * 4, 3 * M) : null);
+  }).catch(() => null);
+  return countryTotalsP;
+}
+let precomputing = false;
+
 async function query(sel, onProgress) {
   const ix = data.index, M = ix.months, era = data.era;
   const out = { modis: new Float64Array(M), viirs: new Float64Array(M), raw: new Float64Array(M),
     harm: new Float64Array(M), check: new Float64Array(M), tiles: 0 };
+  if (sel.poly && sel.poly.i !== undefined && !precomputing) {
+    const get = await loadCountryTotals(), f = get && get(sel.poly.i);
+    if (f) {
+      for (let m = 0; m < M; m++) {
+        out.modis[m] = f[m]; out.viirs[m] = f[M + m]; out.harm[m] = f[2 * M + m];
+        out.raw[m] = era[m] ? out.viirs[m] : out.modis[m];
+      }
+      out.tiles = out.harm.some(v => v > 0) ? 1 : 0;
+      return out;
+    }
+  }
   // check = MODIS converted to VIIRS units for every month, including the VIIRS years, so
   // the two can be compared where both sensors flew (a test of the harmonization).
   // The harmonization: MODIS counts are multiplied by the tile's VIIRS/MODIS ratio for that
@@ -1337,3 +1364,32 @@ $('dlPng').onclick = () => runDownload($('dlPng'), fileStem() + (state.view === 
   await drawSvg('monthlyChart', 24, y + 292, 1152, 452);
   await write(await new Promise(res => cv.toBlob(res, 'image/png')));
 });
+
+/* ----- Precompute country totals (run on this computer only) -----
+   Open http://localhost:8765/?precompute after every data rebuild: every country is counted
+   once with the exact border method and the result is saved as data/countries.bin through
+   tools/serve.py. Then publish with tools/deploy.sh. */
+async function precomputeCountries() {
+  await ready;
+  if (data.error) return;
+  precomputing = true;
+  const list = await loadCountries(), M = data.index.months;
+  const buf = new ArrayBuffer(16 + list.length * 3 * M * 4), dv = new DataView(buf);
+  dv.setUint32(0, list.length, true); dv.setUint32(4, M, true); dv.setFloat64(8, data.index.hotspots, true);
+  const t0 = performance.now();
+  for (const c of list) {
+    if (c.area === undefined) c.area = countryArea(c);
+    $('heatCaption').textContent = `Counting countries… ${c.i + 1}/${list.length}: ${c.n}`;
+    const r = await query({ west: c.b[0], south: c.b[1], east: c.b[2], north: c.b[3], areaM2: c.area, country: c.n, poly: c });
+    const f = new Float32Array(buf, 16 + c.i * 3 * M * 4, 3 * M);
+    f.set(r.modis, 0); f.set(r.viirs, M); f.set(r.harm, 2 * M);
+  }
+  const res = await fetch('data/countries.bin', { method: 'PUT', body: buf });
+  precomputing = false;
+  countryTotalsP = null;
+  $('heatCaption').textContent = res.ok
+    ? `Saved data/countries.bin: ${list.length} countries in ${Math.round((performance.now() - t0) / 1000)} s.`
+    : `Could not save data/countries.bin (HTTP ${res.status}). Is the page served by tools/serve.py?`;
+  window.precomputeResult = res.ok;
+}
+if (/[?&]precompute\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) precomputeCountries();

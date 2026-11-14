@@ -16,7 +16,8 @@ mkdir -p "$SITE"
 cp "$APP/index.html" "$APP/app.js" "$SITE/"
 rsync -a "$APP/vendor" "$APP/geo" "$SITE/"
 mkdir -p "$SITE/data"
-for item in meta.json coarse.bin blocks tiles heat0 heat1; do
+for item in meta.json coarse.bin countries.bin blocks tiles heat0 heat1; do
+  [ -e "$APP/data/$item" ] || continue
   rsync -a --link-dest="$APP/data/" "$APP/data/$item" "$SITE/data/"
 done
 echo "Staged $(find "$SITE" -type f | wc -l | tr -d ' ') files ($(du -sh "$SITE" | cut -f1)) in $SITE"

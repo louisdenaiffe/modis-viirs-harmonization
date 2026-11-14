@@ -38,6 +38,20 @@ class Handler(SimpleHTTPRequestHandler):
             fh.seek(start)
             self.wfile.write(fh.read(end - start + 1))
 
+    def do_PUT(self):
+        """Save data/countries.bin sent by the app's ?precompute page (this computer only)."""
+        if self.path.split("?")[0] != "/data/countries.bin":
+            self.send_error(403, "Only data/countries.bin can be saved")
+            return
+        length = int(self.headers.get("Content-Length", 0))
+        data = self.rfile.read(length)
+        tmp = os.path.join(ROOT, "data", "countries.bin.tmp")
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+        os.replace(tmp, os.path.join(ROOT, "data", "countries.bin"))
+        self.send_response(204)
+        self.end_headers()
+
     def end_headers(self):
         self.send_header("Cache-Control", "no-cache")
         super().end_headers()
