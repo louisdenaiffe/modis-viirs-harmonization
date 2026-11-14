@@ -6,8 +6,8 @@ const EARTH_R = 6371008.8;              // mean Earth radius, metres
 const MIN_SIDE_M = 375;                 // one VIIRS pixel: smallest allowed selection side
 const DEG = Math.PI / 180;
 // Play / Pause icons for the fire-map button (drawn, so they match across systems).
-const ICON_PLAY = '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1v8l7-4z" fill="currentColor"/></svg>';
-const ICON_PAUSE = '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1h2.2v8H2zM5.8 1H8v8H5.8z" fill="currentColor"/></svg>';
+const ICON_PLAY = '<span class="ico"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1v8l7-4z" fill="currentColor"/></svg></span>';
+const ICON_PAUSE = '<span class="ico"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1h2.2v8H2zM5.8 1H8v8H5.8z" fill="currentColor"/></svg></span>';
 const M_PER_DEG_LAT = EARTH_R * DEG;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
