@@ -1176,12 +1176,24 @@ async function saveFile(name, produce) {
       return true;
     }
   }
-  const parts = [];
+  const parts = [], started = performance.now();
   await produce(part => { parts.push(part); });
-  const a = el('a', { href: URL.createObjectURL(new Blob(parts, { type: mime })), download: name });
-  document.body.append(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-  return true;
+  const blob = new Blob(parts, { type: mime }), url = URL.createObjectURL(blob);
+  // Safari and Firefox only start a download within about a second of the click. A file that
+  // took longer to prepare (a big hotspot search) gets a "Save" link for a second click instead.
+  if (performance.now() - started < 800) {
+    const a = el('a', { href: url, download: name });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    return 'saved';
+  }
+  const note = $('dlNote'), mb = blob.size / 1e6;
+  const link = el('a', { href: url, download: name, className: 'savelink',
+    textContent: `Save ${name} (${mb < 1 ? Math.max(1, Math.round(blob.size / 1e3)) + ' KB' : mb.toFixed(1) + ' MB'})` });
+  link.addEventListener('click', () => setTimeout(() => { note.textContent = `Saved ${name}.`; URL.revokeObjectURL(url); }, 1000));
+  note.textContent = 'Your file is ready: ';
+  note.append(link);
+  return 'ready';
 }
 // Run a download button: show progress, report failures instead of failing silently.
 async function runDownload(btn, name, produce) {
@@ -1193,7 +1205,7 @@ async function runDownload(btn, name, produce) {
   btn.disabled = true;
   try {
     const saved = await saveFile(name, produce);
-    if (saved) $('dlNote').textContent = `Saved ${name}.`;
+    if (saved === true || saved === 'saved') $('dlNote').textContent = `Saved ${name}.`;
   } catch (e) {
     $('dlNote').textContent = `Could not save ${name}: ${e.message}`;
   } finally {
