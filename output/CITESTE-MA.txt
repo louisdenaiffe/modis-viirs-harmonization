@@ -1,0 +1,17 @@
+Recuperarea unui exemplu VIIRS din datele locale
+
+Rulează din folderul principal al proiectului:
+
+    python3 output/recupereaza_albania.py
+
+Scriptul citește secvențial arhiva incompletă din 2024, fără să o modifice,
+și recuperează doar fișierul pentru Albania dacă acesta este complet și
+trece verificările de lungime și CRC. Rezultatul este scris în
+output/viirs-snpp_2024_Albania.csv. Dacă există deja, este înlocuit după
+verificare. Scriptul afișează câteva statistici descriptive.
+
+Opțional, --arhiva și --output permit specificarea altor căi. Scriptul este
+adaptat la acest fișier, nu este un instrument general de reparare a ZIP-urilor.
+CSV-ul conține doar detecții VIIRS Suomi NPP, nu și date MODIS sau informații
+despre toate zonele observate fără detecție. Nu constituie o armonizare.
+Pragul de 10 MW este folosit doar pentru analiză descriptivă, nu pentru filtrare.

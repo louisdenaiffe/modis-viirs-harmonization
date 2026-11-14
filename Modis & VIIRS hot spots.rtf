@@ -1,0 +1,339 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2870
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\fswiss\fcharset0 Helvetica-Bold;\f2\fnil\fcharset0 LucidaGrande;
+\f3\fnil\fcharset0 LucidaGrande-Bold;}
+{\colortbl;\red255\green255\blue255;\red24\green24\blue24;\red0\green0\blue0;\red239\green236\blue236;
+\red183\green187\blue184;}
+{\*\expandedcolortbl;;\cssrgb\c12157\c12157\c12157;\cssrgb\c0\c0\c0\c54902;\cssrgb\c94902\c94118\c94118;
+\cssrgb\c76863\c78039\c77255;}
+{\*\listtable{\list\listtemplateid1\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat0\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid1\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid1}
+{\list\listtemplateid2\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat0\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid101\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid2}
+{\list\listtemplateid3\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat0\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid201\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat0\levelspace360\levelindent0{\*\levelmarker \{circle\}}{\leveltext\leveltemplateid202\'01\uc0\u9702 ;}{\levelnumbers;}\fi-360\li1440\lin1440 }{\listname ;}\listid3}
+{\list\listtemplateid4\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat0\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid301\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid4}
+{\list\listtemplateid5\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat0\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid401\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat0\levelspace360\levelindent0{\*\levelmarker \{circle\}}{\leveltext\leveltemplateid402\'01\uc0\u9702 ;}{\levelnumbers;}\fi-360\li1440\lin1440 }{\listname ;}\listid5}
+{\list\listtemplateid6\listhybrid{\listlevel\levelnfc0\levelnfcn0\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{decimal\}}{\leveltext\leveltemplateid501\'01\'00;}{\levelnumbers\'01;}\fi-360\li720\lin720 }{\listname ;}\listid6}}
+{\*\listoverridetable{\listoverride\listid1\listoverridecount0\ls1}{\listoverride\listid2\listoverridecount0\ls2}{\listoverride\listid3\listoverridecount0\ls3}{\listoverride\listid4\listoverridecount0\ls4}{\listoverride\listid5\listoverridecount0\ls5}{\listoverride\listid6\listoverridecount0\ls6}}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\deftab720
+\pard\pardeftab720\partightenfactor0
+
+\f0\fs24 \cf2 \expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Most teams in the 
+\f1\b Harmonization of MODIS and VIIRS Hot Spots
+\f0\b0  track make a fatal mistake on day one: they download CSVs from NASA FIRMS, concatenate them by 
+\fs30 \cf3 \cb4 \strokec3 latitude
+\fs24 \cf2 \cb1 \strokec2 , 
+\fs30 \cf3 \cb4 \strokec3 longitude
+\fs24 \cf2 \cb1 \strokec2 , and 
+\fs30 \cf3 \cb4 \strokec3 acq_date
+\fs24 \cf2 \cb1 \strokec2 , and plot fire counts over time.\
+\
+If you do that, your historical baseline is broken. Because VIIRS has a 
+\f1\b ~7\'d7 smaller pixel area
+\f0\b0  than MODIS and spans three active satellites (Suomi NPP, NOAA-20, NOAA-21) compared to MODIS's two (Terra, Aqua), naive merging produces an artificial jump in fire counts and Fire Radiative Power (FRP) after 2012\'962017 that looks like a climate spike\'97when it is actually just sensor physics.\
+\
+To harmonize both datasets with scientific precision, solve the structural differences between the two sensors before building your burn calendars or anomaly dashboards.\
+\
+\pard\pardeftab720\partightenfactor0
+
+\f1\b\fs28 \cf2 Core Sensor Disparities You Must Resolve\
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \tamarb640 \trbrdrt\brdrnil \trbrdrl\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clshdrawnil \clwWidth1306\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clshdrawnil \clwWidth3480\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clshdrawnil \clwWidth3049\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clshdrawnil \clwWidth5563\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\fs24 \cf2 Parameter
+\f0\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f1\b \cf2 MODIS (Collection 6.1)
+\f0\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f1\b \cf2 VIIRS 375 m (I-Band)
+\f0\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f1\b \cf2 Harmonization Impact
+\f0\b0 \cell \row
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \tamarb640 \trbrdrl\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clshdrawnil \clwWidth1306\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clshdrawnil \clwWidth3480\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clshdrawnil \clwWidth3049\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clshdrawnil \clwWidth5563\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f1\b \cf2 Nadir Pixel Size
+\f0\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 1 km \'d7 1 km ($1.0\\text\{ km\}^2$)\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 375 m \'d7 375 m ($0.14\\text\{ km\}^2$)\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 One MODIS fire pixel often splits into 
+\f1\b 4\'967+ VIIRS pixels
+\f0\b0 , plus VIIRS detects cooler/smaller fires (< 9 MW) that MODIS misses.\cell \row
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \tamarb640 \trbrdrl\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clshdrawnil \clwWidth1306\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clshdrawnil \clwWidth3480\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clshdrawnil \clwWidth3049\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clshdrawnil \clwWidth5563\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f1\b \cf2 Off-Nadir Growth
+\f0\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Stretches up to ~2 km \'d7 4.8 km at scan edge\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Constrained aggregation (stays near ~375\'96800 m)\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 MODIS pixels distort heavily at high scan angles (
+\fs30 \cf3 \cb4 \strokec3 scan
+\fs24 \cf2 \cb1 \strokec2 /
+\fs30 \cf3 \cb4 \strokec3 track
+\fs24 \cf2 \cb1 \strokec2  fields), causing geolocation smear and bow-tie overlap.\cell \row
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \tamarb640 \trbrdrl\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clshdrawnil \clwWidth1306\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clshdrawnil \clwWidth3480\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clshdrawnil \clwWidth3049\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clshdrawnil \clwWidth5563\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f1\b \cf2 Satellites & Overpass
+\f0\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Terra (~10:30 AM/PM), Aqua (~1:30 PM/AM)\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Suomi NPP, NOAA-20, NOAA-21 (~1:30 PM/AM, spaced ~50 min apart)\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Multiple afternoon satellites pass over the same fire within 90 minutes; summing them double- or triple-counts the same burn.\cell \row
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \tamarb640 \trbrdrl\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clshdrawnil \clwWidth1306\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clshdrawnil \clwWidth3480\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clshdrawnil \clwWidth3049\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clshdrawnil \clwWidth5563\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f1\b \cf2 Confidence Scale
+\f0\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Numeric 
+\fs30 \cf3 \cb4 \strokec3 0\'96100%
+\fs24 \cf2 \cb1 \strokec2 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Categorical 
+\fs30 \cf3 \cb4 \strokec3 low
+\fs24 \cf2 \cb1 \strokec2 , 
+\fs30 \cf3 \cb4 \strokec3 nominal
+\fs24 \cf2 \cb1 \strokec2 , 
+\fs30 \cf3 \cb4 \strokec3 high
+\fs24 \cf2 \cb1 \strokec2  (
+\fs30 \cf3 \cb4 \strokec3 l
+\fs24 \cf2 \cb1 \strokec2 , 
+\fs30 \cf3 \cb4 \strokec3 n
+\fs24 \cf2 \cb1 \strokec2 , 
+\fs30 \cf3 \cb4 \strokec3 h
+\fs24 \cf2 \cb1 \strokec2 )\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Cannot be filtered with a single threshold without mapping schemas.\cell \row
+
+\itap1\trowd \taflags0 \trgaph108\trleft-108 \tamarb640 \trbrdrl\brdrnil \trbrdrt\brdrnil \trbrdrr\brdrnil 
+\clvertalc \clshdrawnil \clwWidth1306\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx2160
+\clvertalc \clshdrawnil \clwWidth3480\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx4320
+\clvertalc \clshdrawnil \clwWidth3049\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx6480
+\clvertalc \clshdrawnil \clwWidth5563\clftsWidth3 \clmart10 \clmarl10 \clmarb10 \clmarr10 \clbrdrt\brdrs\brdrw20\brdrcf5 \clbrdrl\brdrs\brdrw20\brdrcf5 \clbrdrb\brdrs\brdrw20\brdrcf5 \clbrdrr\brdrs\brdrw20\brdrcf5 \clpadt160 \clpadl240 \clpadb160 \clpadr240 \gaph\cellx8640
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\f1\b \cf2 Fire Type Flag
+\f0\b0 \cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+
+\fs30 \cf3 \cb4 \strokec3 0
+\fs24 \cf2 \cb1 \strokec2  (veg), 
+\fs30 \cf3 \cb4 \strokec3 1
+\fs24 \cf2 \cb1 \strokec2  (volcano), 
+\fs30 \cf3 \cb4 \strokec3 2
+\fs24 \cf2 \cb1 \strokec2  (static), 
+\fs30 \cf3 \cb4 \strokec3 3
+\fs24 \cf2 \cb1 \strokec2  (offshore) in Standard Science product\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Included in both NRT and Standard products\cell 
+\pard\intbl\itap1\pardeftab720\partightenfactor0
+\cf2 Gas flares and volcanoes will corrupt agricultural/wildfire burn calendars if not masked out.\cell \lastrow\row
+\pard\pardeftab720\partightenfactor0
+
+\f1\b\fs28 \cf2 5-Stage Precision Harmonization Pipeline\
+\pard\pardeftab720\partightenfactor0
+
+\fs24 \cf2 1. Schema Normalization & Static Anomaly Filtering\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls1\ilvl0\cf2 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Standardize confidence:
+\f0\b0  Map MODIS numeric confidence into VIIRS's 3-tier system (
+\fs30 \cf3 \cb4 \strokec3 0\'9629%
+\fs24 \cf2 \cb1 \strokec2  
+\f2 \uc0\u8594 
+\f0  
+\fs30 \cf3 \cb4 \strokec3 Low
+\fs24 \cf2 \cb1 \strokec2 , 
+\fs30 \cf3 \cb4 \strokec3 30\'9679%
+\fs24 \cf2 \cb1 \strokec2  
+\f2 \uc0\u8594 
+\f0  
+\fs30 \cf3 \cb4 \strokec3 Nominal
+\fs24 \cf2 \cb1 \strokec2 , 
+\fs30 \cf3 \cb4 \strokec3 80\'96100%
+\fs24 \cf2 \cb1 \strokec2  
+\f2 \uc0\u8594 
+\f0  
+\fs30 \cf3 \cb4 \strokec3 High
+\fs24 \cf2 \cb1 \strokec2 ). Drop daytime 
+\fs30 \cf3 \cb4 \strokec3 Low
+\fs24 \cf2 \cb1 \strokec2  confidence pixels by default\'97they are heavily contaminated by sun glint over bare soil or water. \uc0\u8232 \
+\ls1\ilvl0
+\f1\b \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Strip non-fire heat sources:
+\f0\b0  Filter strictly to 
+\fs30 \cf3 \cb4 \strokec3 type == 0
+\fs24 \cf2 \cb1 \strokec2  (presumed vegetation fire) where available, and apply a spatial buffer mask around known industrial gas flares, steel plants, and active volcanoes so static thermal anomalies do not pollute your seasonal fire indices. \uc0\u8232 \
+\pard\pardeftab720\partightenfactor0
+
+\f1\b \cf2 2. Scan-Angle & "Bow-Tie" Deduplication\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls2\ilvl0
+\f0\b0 \cf2 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Both sensors suffer from the 
+\f1\b bow-tie effect
+\f0\b0  away from nadir (high View Zenith Angles), where consecutive scan lines overlap on the ground and record the exact same fire twice within seconds. \uc0\u8232 \
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls2\ilvl0
+\f1\b \cf2 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Fix:
+\f0\b0  Never treat FIRMS coordinates as dimensionless points. Use the 
+\fs30 \cf3 \cb4 \strokec3 scan
+\fs24 \cf2 \cb1 \strokec2  and 
+\fs30 \cf3 \cb4 \strokec3 track
+\fs24 \cf2 \cb1 \strokec2  columns (actual pixel dimensions in km) to calculate pixel footprint area ($A = \\text\{scan\} \\times \\text\{track\}$). Within a single satellite overpass (
+\fs30 \cf3 \cb4 \strokec3 < 2 minutes
+\fs24 \cf2 \cb1 \strokec2 ), cluster detections whose footprints overlap by greater than 50% (or centers within $1.5 \\times \\max(\\text\{scan\}, \\text\{track\})$), keeping the near-nadir observation (smallest footprint area) or averaging their FRP rather than summing duplicates. \uc0\u8232 \
+\pard\pardeftab720\partightenfactor0
+
+\f1\b \cf2 3. Footprint-Aware Spatial Grid Aggregation\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls3\ilvl0
+\f0\b0 \cf2 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Do not compare raw hotspot point counts between MODIS and VIIRS. Reproject both datasets onto a common 
+\f1\b equal-area discrete global grid
+\f0\b0 \'97such as 
+\f1\b Uber H3 hexagons
+\f0\b0  (Resolution 7 at ~5.16 km\'b2 for regional/national dashboards, or Resolution 8 at ~0.74 km\'b2 for local fire perimeters) or a 1 km \'d7 1 km equal-area grid.\uc0\u8232 \
+\ls3\ilvl0\kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Assign each hotspot to all grid cells intersected by its actual 
+\fs30 \cf3 \cb4 \strokec3 scan \'d7 track
+\fs24 \cf2 \cb1 \strokec2  footprint (area-weighted allocation), rather than dropping the entire fire into a single center-point cell.\uc0\u8232 \
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls3\ilvl0
+\f1\b \cf2 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 How to aggregate metrics per cell:
+\f0\b0 \uc0\u8232 \
+\pard\tx940\tx1440\pardeftab720\li1440\fi-1440\partightenfactor0
+\ls3\ilvl1
+\f1\b \cf2 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	
+\f3 \uc0\u9702 
+\f1 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 FRP (Megawatts):
+\f0\b0  
+\f1\b Sum
+\f0\b0  VIIRS FRP within a 1 km reference cell. Because FRP is a physical measure of radiant energy release, the sum of sub-pixel VIIRS detections physically corresponds to the integrated 1 km MODIS pixel FRP.\uc0\u8232 \
+\ls3\ilvl1
+\f1\b \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	
+\f3 \uc0\u9702 
+\f1 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Fire Extent / Activity:
+\f0\b0  Track 
+\f1\b active burned cell count
+\f0\b0  (binary presence per cell) and 
+\f1\b sub-pixel active fraction
+\f0\b0  (fraction of the 1 km cell covered by 375 m VIIRS pixels) rather than raw point counts.\uc0\u8232 \
+\pard\pardeftab720\partightenfactor0
+
+\f1\b \cf2 4. Overpass-Window Clustering (Eliminating Constellation Inflation)\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls4\ilvl0
+\f0\b0 \cf2 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Because Aqua, Suomi NPP, NOAA-20, and NOAA-21 all cross the equator in the early afternoon (~1:30 PM local solar time, separated by ~50 minutes), a single wildfire is routinely imaged 3 to 4 times in one afternoon.\uc0\u8232 \
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls4\ilvl0
+\f1\b \cf2 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Fix:
+\f0\b0  Bucket detections into 
+\f1\b diurnal overpass windows
+\f0\b0  (e.g., Morning 
+\fs30 \cf3 \cb4 \strokec3 08:00\'9612:00
+\fs24 \cf2 \cb1 \strokec2 , Afternoon 
+\fs30 \cf3 \cb4 \strokec3 12:00\'9617:00
+\fs24 \cf2 \cb1 \strokec2 , Night 
+\fs30 \cf3 \cb4 \strokec3 20:00\'9604:00
+\fs24 \cf2 \cb1 \strokec2  local solar time).\uc0\u8232 \
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls4\ilvl0\cf2 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Within the same grid cell and overpass window, 
+\f1\b do not sum FRP across different satellites
+\f0\b0 . Instead, apply a 
+\f1\b quality-prioritized fusion rule
+\f0\b0 : take the FRP from the observation with the smallest viewing angle (closest to nadir, where VIIRS geometric fidelity is highest), falling back to MODIS only when VIIRS has no coverage or cloud gaps.\uc0\u8232 \
+\pard\pardeftab720\partightenfactor0
+
+\f1\b \cf2 5. Dual-Tier Cross-Calibration for Multi-Year Anomaly Detection\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls5\ilvl0
+\f0\b0 \cf2 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 The Space Apps prompt explicitly emphasizes 
+\f1\b historical comparisons and anomalies against multi-year averages
+\f0\b0  alongside 
+\f1\b emergency manager monitoring
+\f0\b0 . A single harmonized series cannot optimize both without bias unless you calibrate sensitivity: \uc0\u8232 \
+\pard\tx940\tx1440\pardeftab720\li1440\fi-1440\partightenfactor0
+\ls5\ilvl1
+\f1\b \cf2 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	
+\f3 \uc0\u9702 
+\f1 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Tier A \'97 Long-Term Climate & Anomaly Baseline (2000\'962026):
+\f0\b0  During the sensor overlap years (2012\'96present), fit an empirical 
+\f1\b View Zenith Angle (VZA) correction
+\f0\b0  to MODIS off-nadir FRP and apply 
+\f1\b quantile mapping
+\f0\b0  (or Reduced Major Axis regression) by biome between aggregated VIIRS and MODIS FRP. Apply a minimum FRP threshold (~8\'9610 MW) to VIIRS when computing 20-year historical anomalies so small agricultural burns detected only by VIIRS do not create false positive anomalies against 2000\'962011 MODIS baselines. \uc0\u8232 \
+\ls5\ilvl1
+\f1\b \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	
+\f3 \uc0\u9702 
+\f1 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Tier B \'97 High-Sensitivity Operational Layer (2012\'962026):
+\f0\b0  Retain un-thresholded 375 m VIIRS detections fused with VZA-corrected MODIS gap-fills for real-time fire front tracking, early ignition alerts, and burn-calendar granularity.\uc0\u8232 \
+\pard\pardeftab720\partightenfactor0
+
+\f1\b\fs28 \cf2 How to Make Your Solution Stand Out to NASA Judges\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls6\ilvl0
+\fs24 \cf2 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	1	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Expose a Provenance & Uncertainty Score:
+\f0\b0  For every harmonized grid cell on your map, display which sensors contributed (
+\fs30 \cf3 \cb4 \strokec3 MODIS-only
+\fs24 \cf2 \cb1 \strokec2 , 
+\fs30 \cf3 \cb4 \strokec3 VIIRS-only
+\fs24 \cf2 \cb1 \strokec2 , or 
+\fs30 \cf3 \cb4 \strokec3 Cross-Validated
+\fs24 \cf2 \cb1 \strokec2 ), the minimum scan angle, and a confidence score. Emergency managers need to know whether a spike is a real fire surge or an off-nadir MODIS artifact. \uc0\u8232 \
+\ls6\ilvl0
+\f1\b \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	2	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Prove Your Calibration Visually:
+\f0\b0  Include a diagnostic "Before vs. After Harmonization" chart in your pitch or app showing the 2012\'962026 time series for a test region\'97demonstrating how raw concatenation creates an artificial step-change while your footprint-aggregated, overpass-deduplicated pipeline maintains a smooth, physically consistent baseline.\
+\pard\pardeftab720\partightenfactor0
+\cf2 \
+}

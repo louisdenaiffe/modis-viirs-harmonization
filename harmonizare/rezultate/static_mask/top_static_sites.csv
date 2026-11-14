@@ -1,0 +1,31 @@
+lat,lon,n_days,sensor,likely_identity,reason,n0q_removed,n0q_snpp,n0q_aqua,night_share,max_months_snpp,mean_frp,n_flag1,n_flag2,n_flag3
+63.878,-22.251,148,SNPP+MODIS,"Fagradalsfjall eruption 2021, Iceland (volcano)",volcano,9561.0,7576.0,910.0,0.61,10,104.9,,,
+28.626,-17.86,97,SNPP+MODIS,"Cumbre Vieja eruption 2021, La Palma (volcano)",volcano,9086.0,7942.0,582.0,0.79,5,89.6,0.0,4.0,34.0
+-21.262,55.741,133,SNPP (MODIS ~0),"Piton de la Fournaise, Reunion (volcano)",volcano,5136.0,5124.0,5.0,0.85,8,34.3,619.0,748.0,0.0
+19.412,-155.273,211,SNPP (MODIS ~0),"Kilauea, Hawaii (volcano)",volcano,4659.0,4659.0,0.0,0.78,10,39.4,6789.0,1506.0,0.0
+28.631,-17.918,92,SNPP+MODIS,"Cumbre Vieja eruption 2021, La Palma (volcano)",volcano,4085.0,3804.0,130.0,0.82,5,49.3,0.0,68.0,114.0
+64.873,-16.844,45,SNPP (MODIS ~0),"Holuhraun eruption 2014-15, Iceland (volcano)",volcano,3306.0,3301.0,1.0,0.96,3,65.2,0.0,834.0,0.0
+60.424,96.528,270,SNPP+MODIS,"gas flares, Yurubcheno-Tokhomskoye oil field area, E Siberia (likely)",type_flag_modis,3136.0,2222.0,446.0,0.75,12,33.1,0.0,2864.0,0.0
+30.263,50.753,298,SNPP (MODIS ~0),"gas flares, Gachsaran oil field, Iran (likely)",type_flag_viirs,2816.0,2757.0,30.0,0.89,12,2.0,0.0,6729.0,0.0
+31.026,47.273,203,SNPP (MODIS ~0),"gas flares, West Qurna/Basra oil fields, Iraq (likely)",type_flag_modis,2770.0,2769.0,0.0,0.81,9,20.1,0.0,21581.0,0.0
+30.365,50.635,275,SNPP (MODIS ~0),"gas flares, Gachsaran oil field, Iran (likely)",type_flag_viirs,2770.0,2666.0,46.0,0.83,12,2.5,0.0,4660.0,0.0
+0.02,-91.341,80,SNPP (MODIS ~0),"Wolf volcano 2015, Galapagos",volcano,2739.0,2732.0,6.0,0.84,8,33.0,516.0,364.0,0.0
+34.858,44.036,195,SNPP (MODIS ~0),"gas flares, Kirkuk-area oil/gas fields, Iraq (likely)",type_flag_modis,2624.0,2620.0,1.0,0.71,8,7.1,0.0,962.0,0.0
+56.63,161.331,200,SNPP (MODIS ~0),"Shiveluch, Kamchatka (volcano)",volcano,2364.0,2354.0,5.0,0.86,12,13.1,789.0,2297.0,0.0
+61.539,113.165,282,SNPP+MODIS,"gas flares, Sakha oil fields (Talakan/Srednebotuobinskoye), E Siberia (likely)",type_flag_viirs,2155.0,1521.0,286.0,0.68,12,16.7,0.0,1632.0,0.0
+0.643,117.45,180,SNPP (MODIS ~0),"Bontang LNG plant, East Kalimantan (industrial flare)",persistence,2123.0,2021.0,40.0,0.9,12,2.2,0.0,261.0,0.0
+31.849,6.163,321,SNPP (MODIS ~0),"gas flares, Hassi Messaoud oil field, Algeria",type_flag_modis,2123.0,2039.0,38.0,0.77,11,11.5,0.0,1848.0,0.0
+15.353,46.826,211,SNPP (MODIS ~0),"gas flares, Shabwah/Marib oil fields, Yemen (likely)",type_flag_viirs,2092.0,1995.0,39.0,0.84,12,3.2,0.0,3500.0,0.0
+31.589,5.957,293,SNPP+MODIS,"gas flares, Hassi Messaoud oil field, Algeria",type_flag_modis,1966.0,1445.0,246.0,0.84,12,14.3,0.0,3775.0,0.0
+28.869,9.938,239,SNPP (MODIS ~0),"gas flares, Illizi basin (In Amenas/Ohanet), Algeria (likely)",type_flag_viirs,1899.0,1892.0,3.0,0.96,11,1.3,0.0,3690.0,0.0
+31.656,47.52,307,SNPP (MODIS ~0),"gas flares, Maysan oil fields (Halfaya), Iraq (likely)",type_flag_modis,1807.0,1803.0,2.0,0.71,11,9.6,0.0,7252.0,0.0
+32.988,46.173,319,SNPP (MODIS ~0),"gas flares, Badra/Ilam fields, Iraq-Iran border (likely)",type_flag_viirs,1791.0,1766.0,10.0,0.75,11,10.0,0.0,3449.0,0.0
+30.435,50.537,227,SNPP (MODIS ~0),"gas flares, Gachsaran oil field, Iran (likely)",persistence,1712.0,1709.0,,0.96,12,1.4,0.0,41.0,0.0
+18.512,-96.144,204,SNPP+MODIS,"UNCERTAIN: Veracruz lowlands, Mexico (sugar mill / industry?)",persistence,1681.0,1035.0,337.0,0.71,10,19.2,0.0,197.0,0.0
+-26.056,29.227,188,SNPP (MODIS ~0),"eMalahleni (Witbank) coalfield / industry, South Africa (likely)",type_flag_viirs,1648.0,1561.0,26.0,0.89,12,3.0,0.0,2020.0,1.0
+30.476,50.483,214,SNPP+MODIS,"gas flares, Gachsaran oil field, Iran (likely)",type_flag_viirs,1640.0,1560.0,33.0,0.94,12,1.9,0.0,4011.0,0.0
+39.426,110.47,126,SNPP+MODIS,"coal/coking industry, Shenmu-Ordos, China (likely)",type_flag_viirs,1633.0,1536.0,44.0,0.84,10,2.4,0.0,1735.0,0.0
+66.278,78.74,108,SNPP+MODIS,"gas flares, Urengoy/Tarko-Sale gas fields, West Siberia (likely)",type_flag_viirs,1612.0,819.0,378.0,0.48,10,25.0,0.0,4161.0,0.0
+31.072,47.765,286,SNPP+MODIS,"gas flares, Majnoon oil field, Iraq (likely)",type_flag_viirs,1573.0,1483.0,44.0,0.77,10,4.2,0.0,2047.0,0.0
+31.732,47.434,330,SNPP (MODIS ~0),"gas flares, Maysan oil fields, Iraq (likely)",type_flag_viirs,1495.0,1490.0,5.0,0.73,12,6.0,0.0,860.0,0.0
+30.761,27.074,247,SNPP (MODIS ~0),"gas flares, Egyptian Western Desert oil fields (likely)",type_flag_viirs,1494.0,1471.0,6.0,0.92,12,2.0,0.0,785.0,0.0
