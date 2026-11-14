@@ -362,7 +362,7 @@ async function selectCountryAt(ll) {
       const ang = o.dir * now / 1000 / o.period * 2 * Math.PI, p = at(o, ang);
       if (hidden(p)) continue;
       const [x, y] = scr(p), [xn, yn] = scr(at(o, ang + o.dir * 0.02));
-      const s = Math.max(5, Math.min(11, R / d / 40)) * d * (p[2] >= 0 ? 1 : 0.8);
+      const s = Math.max(7, Math.min(16, R / d / 26)) * d * (p[2] >= 0 ? 1 : 0.8);
       ctx.save();
       ctx.translate(x, y); ctx.rotate(Math.atan2(yn - y, xn - x));
       // solar panels (blue, with cell lines) on both sides of the body
@@ -883,7 +883,7 @@ function openPanel(open) {
   $('panelTab').classList.toggle('show', !open && !!state.sel);
   // Keep the globe's centre in the part of the screen the panel leaves free: on the right of a
   // wide screen, above the bottom sheet on a phone.
-  const wide = innerWidth > 760, w = open && wide ? $('panel').offsetWidth : 0, h = open && !wide ? innerHeight * 0.58 : 0;
+  const wide = innerWidth > 760, w = open && wide ? $('panel').offsetWidth + 12 : 0, h = open && !wide ? innerHeight * 0.58 : 0;
   map.easeTo({ padding: { top: 0, bottom: h, left: 0, right: w }, duration: 300 });
 }
 $('panelClose').onclick = () => openPanel(false);

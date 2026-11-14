@@ -135,7 +135,8 @@ def find_gaps(daycounts, block_ratio, viirs_first_day, viirs_last_day):
     daycounts: {key: (D, 2) array of MODIS, VIIRS hotspots per day}
     block_ratio: {key: (12,) VIIRS/MODIS ratio of the block by month of year}
     Step 1, worldwide: each day's VIIRS/MODIS ratio is compared with the median of the
-    15 days around it; a day far below (under GAP_DAY) is an outage day.
+    15 days around it; a day far below (under GAP_DAY), or with no VIIRS at all while
+    MODIS saw fires, is an outage day.
     Step 2, per block: on an outage day, a block whose VIIRS count is under GAP_BLOCK of
     what its MODIS count predicts is marked as missing (this catches partial outages,
     when only some orbits are lost).
@@ -144,9 +145,12 @@ def find_gaps(daycounts, block_ratio, viirs_first_day, viirs_last_day):
     tot = sum(daycounts.values())
     gm, gv = tot[:, 0].astype(float), tot[:, 1].astype(float)
     r = pd.Series(np.where(gm >= GAP_MIN_MODIS, gv / np.maximum(gm, 1), np.nan))
-    med = r.rolling(15, center=True, min_periods=5).median().to_numpy()
+    # The usual ratio around each day ignores days with no VIIRS at all, so a long outage
+    # (like 3-14 November 2026, when NASA published no Suomi NPP data) cannot hide itself.
+    med = r.where(gv > 0).rolling(15, center=True, min_periods=5).median().to_numpy()
     days = np.arange(D)
-    bad = (days >= viirs_first_day) & (days <= viirs_last_day) & (gm >= GAP_MIN_MODIS) & (r.to_numpy() < GAP_DAY * med)
+    bad = (days >= viirs_first_day) & (days <= viirs_last_day) & (gm >= GAP_MIN_MODIS) & \
+          ((r.to_numpy() < GAP_DAY * med) | (gv == 0))
     bad_days = np.flatnonzero(bad)
     moy = ((EPOCH + bad_days).astype("datetime64[M]").astype(int)) % 12
     gaps = {}
@@ -187,8 +191,10 @@ def main():
     month_of = month_table(dmax + 2)
     M = int(month_of[dmax]) + 1
     full = lambda day: int(month_of[day]) if month_of[day + 1] != month_of[day] else int(month_of[day]) - 1
-    viirs_end = full(vmax) if vmax else -1
-    overlap_end = min(viirs_end, full(dmax))
+    # VIIRS counts are used up to the newest month with VIIRS data, even if that month is not
+    # finished yet; the ratios only use months both sensors fully cover.
+    viirs_end = int(month_of[vmax]) if vmax else -1
+    overlap_end = min(full(vmax), full(dmax)) if vmax else -1
     keys = sorted({int(f.split(".")[0]) for f in os.listdir(tmp)})
 
     # ---- pass 2a: monthly counts per tile and satellite, needed for the ratios ----

@@ -155,9 +155,11 @@ outlined in the table, left out of the medians, and left out of the harmonizatio
 - VIIRS outages are filled with MODIS (see section 12).
 
 ### 12. Filling the VIIRS outage days (`tools/build_world.py`, `find_gaps`)
-Some days the VIIRS satellite sends little or no data. The build finds 60 such days
+Some days the VIIRS satellite sends little or no data. The build finds 87 such days
 between 2012 and 2026, for example 10-16 July and 24-29 July 2024, and in 2026: 10-12 March,
-28-30 April, 1-2 June, 10-16 July, 3-4 and 18 August, 12-13 October. Counting VIIRS alone would make
+28-30 April, 1-2 June, 10-16 July, 3-4 and 18 August, 12-13 October, and 3-14 November
+(NASA has published no Suomi NPP data after 2 November 2026; rerun the download when it
+does, then rebuild). Any day with no VIIRS at all while MODIS saw fires is also an outage day. Counting VIIRS alone would make
 those months look calmer than they were. MODIS kept flying, so we use it to fill the hole.
 1. **Find the bad days, worldwide.** For every day we divide the VIIRS count by the MODIS
    count (normally about 4 to 5). A day whose ratio falls below half of the median of the
@@ -171,7 +173,7 @@ those months look calmer than they were. MODIS kept flying, so we use it to fill
    changed.
 - Checked: on full-outage days the filled totals match the expected worldwide VIIRS count
   within about 5%. In 2026 the fill adds about 820,000 VIIRS-equivalent hotspots (5%).
-  Over the whole record, 7,505 block-days are filled. Example, central Africa: July 2026
+  Over the whole record, 11,196 block-days are filled. Example, central Africa: July 2026
   goes up by 20% (VIIRS missing about 7 of 31 days); months without outages do not change.
 - The app's monthly table CSV marks those months as "VIIRS + MODIS scaled on VIIRS outage
   days", and the source line under the panel lists the outage days.
