@@ -975,10 +975,15 @@ function updateMapArea() {
   const m = mapMonth(), r = state.result, cap = $('heatCaption'), sub = $('heatArea');
   const on = $('heatChk').checked, total = heat.total;
   const area = on && total != null && r && state.sel;
+  // For a selection: how this month compares with the same month in the other years (the
+  // Anomaly view's number), when the month is inside the dates chosen in the panel.
+  const md = state.model, moy = m % 12, v = area ? r[state.unit][m] : 0;
+  const inRange = area && md && m >= state.m0 && m <= state.m1 && md.med[moy] > 0 && m !== data.index.partialMonth;
+  const vsUsual = inRange ? ` · ${pct((v - md.med[moy]) / md.med[moy] * 100)} vs a usual ${MONTHS_LONG[moy]}` : '';
   cap.textContent = !on ? 'Fire map hidden' : total == null ? 'No satellite data'
-    : (area ? `${state.sel.country || 'Selected area'} ${nf(r[state.unit][m])} · ` : '') + `World ${nf(Math.round(total))}`;
+    : area ? `${state.sel.country || 'Selected area'} ${nf(v)}${vsUsual}` : `World ${nf(Math.round(total))}`;
   sub.hidden = !on || total == null;
-  sub.textContent = UNITS[state.unit].long + (area ? ' · ' + sourceOf(m) : '');
+  sub.textContent = area ? `World ${nf(Math.round(total))} · ${UNITS[state.unit].long} · ${sourceOf(m)}` : UNITS[state.unit].long;
   markMapMonth();
 }
 // The table cell of the month on the map is outlined, whichever way the month was chosen.
@@ -1366,6 +1371,7 @@ function render() {
     (md.ix.partialMonth >= 0 ? 'The outlined month is incomplete and is left out of the medians. ' : '') +
     '“–” means outside the chosen dates or no satellite data (the record runs from ' + md.ix.firstDate.slice(0, 7) + ' to ' + md.ix.lastDate.slice(0, 7) + ').';
 
+  updateMapArea();
   drawSeason(md, unit);
   drawAnomaly(md, unit);
   drawMonthly(md);
