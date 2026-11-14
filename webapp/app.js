@@ -980,8 +980,8 @@ Promise.all([ready, new Promise(res => map.once('load', res))]).then(() => {
   if (data.error) { $('heatCaption').textContent = 'Fire map data could not be loaded'; return; }
   $('playBtn').onclick = () => (play.on ? stopPlay() : startPlay());
   const ix = data.index, fy = 2000 + Math.floor(ix.firstMonth / 12), ly = 2000 + Math.floor(ix.lastMonth / 12);
-  // Start on the newest complete month.
-  const startM = ix.partialMonth === ix.lastMonth ? ix.lastMonth - 1 : ix.lastMonth;
+  // Start on the newest month, even while it is still running (its caption says "incomplete month").
+  const startM = ix.lastMonth;
   const yearBox = $('heatYear'), slider = $('heatMonth');
   yearBox.min = fy; yearBox.max = ly; yearBox.value = 2000 + Math.floor(startM / 12);
   slider.value = startM % 12;
