@@ -1,0 +1,7 @@
+pandas>=2.2
+numpy
+scipy
+scikit-learn
+statsmodels
+matplotlib
+pytest

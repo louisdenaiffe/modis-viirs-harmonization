@@ -1,0 +1,4703 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-11-14T11:11:11+00:00",
+  "config": {
+    "data_dir": "data",
+    "out_dir": "outputs",
+    "keep_types": [
+      0
+    ],
+    "min_confidence": "nominal",
+    "modis_conf_low_max": 29,
+    "modis_conf_high_min": 80,
+    "cell_size_deg": 0.25,
+    "time_step": "month",
+    "viirs_reference": "VIIRS_SNPP",
+    "min_pairs_for_split_fit": 30
+  },
+  "training_data": {
+    "source_files": [
+      "modis_2025_Italy.csv",
+      "viirs-snpp_2025_Italy.csv"
+    ],
+    "periods": [
+      "2025-01",
+      "2025-02",
+      "2025-03",
+      "2025-04",
+      "2025-05",
+      "2025-06",
+      "2025-07",
+      "2025-08",
+      "2025-09",
+      "2025-10",
+      "2025-11",
+      "2025-12"
+    ],
+    "n_cells": 505
+  },
+  "recommended": {
+    "metric": "fire_cell_days",
+    "model": "ratio",
+    "modis_source": "MODIS_ALL",
+    "fit_level": "cell_period",
+    "use_daynight_split": false,
+    "validation_worst_abs_bias_pct": 5.5816118091280185,
+    "validation_min_r2_monthly": 0.9829127531543185,
+    "validation_min_spearman_months": 0.9930069930069931,
+    "reason": "Chosen on independent hold-out (leave-one-month-out, Jan-Jun/Jul-Dec, 5-fold cells, north/south): lowest worst-case national bias with D+N pooled. Night-only ratios are unstable; D/N split not used.",
+    "calibration_module_pick": {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "lomo_wape_pct": 9.71765377559838,
+      "lomo_bias_pct": -0.46220549646822323
+    }
+  },
+  "coefficients": [
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 1949,
+        "k": 3.6840974212034383,
+        "degenerate": false
+      },
+      "n_train": 1949,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": -0.5496404860491788,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 1949,
+        "offset": 1.0,
+        "a": 0.9063143898142085,
+        "b": 0.6820963545795568,
+        "smearing": 1.3635442087714804,
+        "degenerate": false
+      },
+      "n_train": 1949,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.1631663972422044,
+        "bias_pct": -11.50738077911422,
+        "bias_pct_backcast": -35.75171988110676
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 1949,
+        "offset": 1.0,
+        "a": 0.6855050197266787,
+        "b": 1.0660686134393098,
+        "degenerate": false
+      },
+      "n_train": 1949,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.1851381079345027,
+        "bias_pct": -9.5062285504651e-08,
+        "bias_pct_backcast": -20.260671192560476
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 1949,
+        "c": 3.720599394632581,
+        "b": 0.9938255338131695,
+        "degenerate": false
+      },
+      "n_train": 1949,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": -0.5528804898855766,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 3.6840974212034383,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.9099969956639682,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 1.1724038788695685,
+        "b": 0.9994873950325361,
+        "smearing": 1.1081109083622243,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.9211973356499147,
+        "bias_pct": -2.8527615163658435,
+        "bias_pct_backcast": -2.8527615163658435
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 0.562313035629888,
+        "b": 1.122627638096496,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.9195860160437599,
+        "bias_pct": -5.0700394905366226e-11,
+        "bias_pct_backcast": -5.0700394905366226e-11
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 1.8936052518982116,
+        "b": 1.1107014461730464,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.898954401274712,
+        "bias_pct": 1.7684127975363178e-14,
+        "bias_pct_backcast": 1.7684127975363178e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 1007,
+        "k": 8.783938814531549,
+        "degenerate": false
+      },
+      "n_train": 1007,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": -1.612208983983134,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 3.959489341632252e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 1007,
+        "offset": 1.0,
+        "a": 1.1149024554788787,
+        "b": 0.8500766604927408,
+        "smearing": 1.2749516646870531,
+        "degenerate": false
+      },
+      "n_train": 1007,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": 0.2004756464739995,
+        "bias_pct": -4.05642624460153,
+        "bias_pct_backcast": -53.6509806395292
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 1007,
+        "offset": 1.0,
+        "a": 1.0608876983175128,
+        "b": 1.0555884465841825,
+        "degenerate": false
+      },
+      "n_train": 1007,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": 0.1938036645096486,
+        "bias_pct": -3.115979529737625e-09,
+        "bias_pct_backcast": -49.616221268361386
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 1007,
+        "c": 12.196351932175196,
+        "b": 0.7019564791850229,
+        "degenerate": false
+      },
+      "n_train": 1007,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": -1.7025609572227185,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 8.783938814531549,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": -1.2960846722917614,
+        "bias_pct": -1.979744670816126e-14,
+        "bias_pct_backcast": -1.979744670816126e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 3.717168203899392,
+        "b": 0.642478302049738,
+        "smearing": 1.0222825507251485,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": 0.9677423668781413,
+        "bias_pct": -4.075121846145095,
+        "bias_pct_backcast": -5.862870340828067
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 3.5380659066948708,
+        "b": 0.6977410143778895,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": 0.9612398162675528,
+        "bias_pct": 3.741717427842478e-11,
+        "bias_pct_backcast": -1.497619563617539
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 43.90779666025759,
+        "b": 0.6527456105391436,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": -0.6576332903922424,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 1.979744670816126e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 2302,
+        "k": 4.48868778280543,
+        "degenerate": false
+      },
+      "n_train": 2302,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": -0.5236781796911785,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 2.4448782305723878e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 2302,
+        "offset": 1.0,
+        "a": 0.9765044310602836,
+        "b": 0.7770903852443174,
+        "smearing": 1.3581923245090368,
+        "degenerate": false
+      },
+      "n_train": 2302,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.24204348753514726,
+        "bias_pct": -12.633764667531725,
+        "bias_pct_backcast": -36.20881157930523
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 2302,
+        "offset": 1.0,
+        "a": 0.829649862904088,
+        "b": 1.1002684883117546,
+        "degenerate": false
+      },
+      "n_train": 2302,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.2614539069550669,
+        "bias_pct": 1.185765941827608e-12,
+        "bias_pct_backcast": -20.737408655519147
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 2302,
+        "c": 4.62046240947882,
+        "b": 0.9835077542698037,
+        "degenerate": false
+      },
+      "n_train": 2302,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": -0.532332182955022,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 4.48868778280543,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.8652904304223046,
+        "bias_pct": 1.2224391152861939e-14,
+        "bias_pct_backcast": 1.2224391152861939e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 2.2711137187805317,
+        "b": 0.8494813168581411,
+        "smearing": 1.0878669156321799,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.9202624599853507,
+        "bias_pct": -6.735499274514517,
+        "bias_pct_backcast": -6.735499274514517
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 1.3139695744567899,
+        "b": 1.0296135110933566,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.8841467972068648,
+        "bias_pct": -2.24278826335062e-08,
+        "bias_pct_backcast": -2.24278826335062e-08
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 4.003994576775359,
+        "b": 1.0183970602694659,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.8537803492637992,
+        "bias_pct": -1.2224391152861939e-14,
+        "bias_pct_backcast": -1.2224391152861939e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 1949,
+        "k": 2.7321328081035454,
+        "degenerate": false
+      },
+      "n_train": 1949,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": -1.047615815758916,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 1949,
+        "offset": 1.0,
+        "a": 0.7843029320277825,
+        "b": 0.4784980710945199,
+        "smearing": 1.1849571116513393,
+        "degenerate": false
+      },
+      "n_train": 1949,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.1045250297624074,
+        "bias_pct": -5.389600521625105,
+        "bias_pct_backcast": -39.90871079765529
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 1949,
+        "offset": 1.0,
+        "a": 0.29679121898671385,
+        "b": 0.9630135873399104,
+        "degenerate": false
+      },
+      "n_train": 1949,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.11110166859366077,
+        "bias_pct": -8.241820380995174e-09,
+        "bias_pct_backcast": -29.100124941313915
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 1949,
+        "c": 2.761372122246632,
+        "b": 0.9888939389821377,
+        "degenerate": false
+      },
+      "n_train": 1949,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": -1.0525524960474169,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 2.7321328081035454,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.9110521808209413,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 1.224184652800251,
+        "b": 0.9432343251645888,
+        "smearing": 1.0706553955231157,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.9251104758127197,
+        "bias_pct": -1.6894461274917851,
+        "bias_pct_backcast": -1.6894461274917851
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 0.8184416885787673,
+        "b": 1.0329490232417904,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.9268288106864941,
+        "bias_pct": 7.571636121379581e-08,
+        "bias_pct_backcast": 7.571636121379581e-08
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 2.5013918131880195,
+        "b": 1.0161688545952012,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.9081350008084763,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 1007,
+        "k": 6.397626112759644,
+        "degenerate": false
+      },
+      "n_train": 1007,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": -3.588861398062134,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": -2.1092177684900935e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 1007,
+        "offset": 1.0,
+        "a": 0.9105837102153383,
+        "b": 0.49861268829960576,
+        "smearing": 1.113369441838342,
+        "degenerate": false
+      },
+      "n_train": 1007,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": 0.1123079528819596,
+        "bias_pct": -1.4823650256299425,
+        "bias_pct_backcast": -66.16806115906101
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 1007,
+        "offset": 1.0,
+        "a": 0.5388889216153753,
+        "b": 0.8287086558561464,
+        "degenerate": false
+      },
+      "n_train": 1007,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": 0.11158400478690367,
+        "bias_pct": -8.8359350757587e-09,
+        "bias_pct_backcast": -62.72847533154447
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 1007,
+        "c": 7.755856666877801,
+        "b": 0.6383250500867236,
+        "degenerate": false
+      },
+      "n_train": 1007,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": -3.7032730019273314,
+        "bias_pct": 2.1092177684900935e-14,
+        "bias_pct_backcast": 4.218435536980187e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 6.397626112759644,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": -1.9202502337108784,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 3.436722532237376,
+        "b": 0.5927963061158034,
+        "smearing": 1.0299489080141422,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": 0.9458231751393075,
+        "bias_pct": 0.41931277632638303,
+        "bias_pct_backcast": -2.457855162883797
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 3.414710877868086,
+        "b": 0.6040658666909635,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": 0.9465958094160349,
+        "bias_pct": 5.997349802924732e-10,
+        "bias_pct_backcast": -2.8207937364576567
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 40.20671797506401,
+        "b": 0.5495594030226144,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": -0.9982803585034794,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 2302,
+        "k": 3.2129446640316206,
+        "degenerate": false
+      },
+      "n_train": 2302,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": -1.1010590894136207,
+        "bias_pct": -1.3985771209794377e-14,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 2302,
+        "offset": 1.0,
+        "a": 0.8389463194143724,
+        "b": 0.5559384469660703,
+        "smearing": 1.1807197201739705,
+        "degenerate": false
+      },
+      "n_train": 2302,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.16572067219809328,
+        "bias_pct": -5.8330014974383975,
+        "bias_pct_backcast": -41.68424635499942
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 2302,
+        "offset": 1.0,
+        "a": 0.4155107554857027,
+        "b": 0.9910664457049492,
+        "degenerate": false
+      },
+      "n_train": 2302,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.17593697661601715,
+        "bias_pct": 1.0396748196245427e-07,
+        "bias_pct_backcast": -31.36067001393027
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 2302,
+        "c": 3.3970002487028315,
+        "b": 0.9463328798260509,
+        "degenerate": false
+      },
+      "n_train": 2302,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": -1.1256229014343626,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 1.3985771209794377e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 3.2129446640316206,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.8104533457524405,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 2.2149402818955894,
+        "b": 0.7955564223544495,
+        "smearing": 1.0567913673345861,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.9228562786992821,
+        "bias_pct": -2.8708409255433756,
+        "bias_pct_backcast": -2.8708409255433756
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 1.7145051911316975,
+        "b": 0.9010598467213624,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.9133617732686542,
+        "bias_pct": -7.511394086729103e-09,
+        "bias_pct_backcast": -7.511394086729103e-09
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 6.090870887852491,
+        "b": 0.8855497577813244,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.8894876548649878,
+        "bias_pct": 2.7971542419588754e-14,
+        "bias_pct_backcast": 2.7971542419588754e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 1949,
+        "k": 1.2903026195326797,
+        "degenerate": false
+      },
+      "n_train": 1949,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": -0.7516547794123072,
+        "bias_pct": 1.481364417501544e-14,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 1949,
+        "offset": 1.0,
+        "a": 1.894844867520787,
+        "b": 0.35096058613092374,
+        "smearing": 2.7951635760998603,
+        "degenerate": false
+      },
+      "n_train": 1949,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": -0.22141744537672214,
+        "bias_pct": -18.297810924443837,
+        "bias_pct_backcast": -37.10172063838581
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 1949,
+        "offset": 1.0,
+        "a": 2.4220569185656506,
+        "b": 0.5412340520223938,
+        "degenerate": false
+      },
+      "n_train": 1949,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": -0.155249785004568,
+        "bias_pct": -5.192897782356566e-08,
+        "bias_pct_backcast": -12.045283000647357
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 1949,
+        "c": 5.341466101119965,
+        "b": 0.7292483682757019,
+        "degenerate": false
+      },
+      "n_train": 1949,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": -0.9653835479818453,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 1.481364417501544e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 1.2903026195326797,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.8444997509543541,
+        "bias_pct": 1.481364417501544e-14,
+        "bias_pct_backcast": 1.481364417501544e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 0.8967266038601795,
+        "b": 0.9012001209516004,
+        "smearing": 1.2338818506730969,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.8453853387789096,
+        "bias_pct": -7.816674684134883,
+        "bias_pct_backcast": -7.816674684134883
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": -0.16253273888988673,
+        "b": 1.043907331714234,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.8383048338031143,
+        "bias_pct": -3.947984309083365e-10,
+        "bias_pct_backcast": -3.947984309083365e-10
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 0.8538337831064313,
+        "b": 1.0434489972655714,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 899,
+      "fit_stats": {
+        "r2_log": 0.8364862830751021,
+        "bias_pct": -1.481364417501544e-14,
+        "bias_pct_backcast": -1.481364417501544e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 1007,
+        "k": 1.1456531759116455,
+        "degenerate": false
+      },
+      "n_train": 1007,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": -0.7453125264148428,
+        "bias_pct": 1.4073386317446507e-14,
+        "bias_pct_backcast": 1.4073386317446507e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 1007,
+        "offset": 1.0,
+        "a": 1.1754893184320043,
+        "b": 0.4112307070733722,
+        "smearing": 2.5001666492802124,
+        "degenerate": false
+      },
+      "n_train": 1007,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": -0.37290532827962397,
+        "bias_pct": -0.4413589228294766,
+        "bias_pct_backcast": -43.78198632593085
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 1007,
+        "offset": 1.0,
+        "a": 1.8940038520399092,
+        "b": 0.46959603597603056,
+        "degenerate": false
+      },
+      "n_train": 1007,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": -0.31977609590198663,
+        "bias_pct": -5.369883503443842e-09,
+        "bias_pct_backcast": -40.56961301803513
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 1007,
+        "c": 5.522997213240304,
+        "b": 0.6499314222548628,
+        "degenerate": false
+      },
+      "n_train": 1007,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": -0.8847816244862352,
+        "bias_pct": 1.4073386317446507e-14,
+        "bias_pct_backcast": 1.4073386317446507e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 1.1456531759116455,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": -1.298582077354102,
+        "bias_pct": 1.4073386317446507e-14,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 4.002004924787665,
+        "b": 0.42563571393031474,
+        "smearing": 1.8825655465867268,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": 0.4373749288130935,
+        "bias_pct": 17.126229959488544,
+        "bias_pct_backcast": 15.548038214241458
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 4.436547681012865,
+        "b": 0.43127071108103465,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": 0.5179063614177755,
+        "bias_pct": 2.502219940469354e-09,
+        "bias_pct_backcast": -1.3072739635548287
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 97.3451807054757,
+        "b": 0.4133668502864029,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 218,
+      "fit_stats": {
+        "r2_log": -0.6479280398049205,
+        "bias_pct": 1.4073386317446507e-14,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 2302,
+        "k": 1.2716338514443386,
+        "degenerate": false
+      },
+      "n_train": 2302,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": -0.5214645845422947,
+        "bias_pct": -2.6182346619740495e-14,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 2302,
+        "offset": 1.0,
+        "a": 1.6889562557898186,
+        "b": 0.42651282909878974,
+        "smearing": 2.7958003361260477,
+        "degenerate": false
+      },
+      "n_train": 2302,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": -0.14313546274077482,
+        "bias_pct": -14.958452839392006,
+        "bias_pct_backcast": -32.07552127875664
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 2302,
+        "offset": 1.0,
+        "a": 2.3092264463650483,
+        "b": 0.570960818661575,
+        "degenerate": false
+      },
+      "n_train": 2302,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": -0.06326701634756704,
+        "bias_pct": 5.053192897609915e-12,
+        "bias_pct_backcast": -12.189552980055142
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 2302,
+        "c": 5.485549445757607,
+        "b": 0.7257986720769883,
+        "degenerate": false
+      },
+      "n_train": 2302,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": -0.7068074554797918,
+        "bias_pct": 1.3091173309870248e-14,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 1.2716338514443386,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.7565723133342627,
+        "bias_pct": -2.6182346619740495e-14,
+        "bias_pct_backcast": -2.6182346619740495e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 1.9111833986446731,
+        "b": 0.7955442807391041,
+        "smearing": 1.2672196125263067,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.7973696343302287,
+        "bias_pct": -4.744450957339162,
+        "bias_pct_backcast": -4.744450957339162
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 0.8279703492927961,
+        "b": 0.9389786770090197,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.790352654557452,
+        "bias_pct": -1.5741481346453482e-09,
+        "bias_pct_backcast": -1.5741481346453482e-09
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_ALL",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 2.2995263221724755,
+        "b": 0.9385013919981379,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 956,
+      "fit_stats": {
+        "r2_log": 0.7888089346588454,
+        "bias_pct": 1.3091173309870248e-14,
+        "bias_pct_backcast": 1.3091173309870248e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 1851,
+        "k": 5.2319430315361135,
+        "degenerate": false
+      },
+      "n_train": 1851,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": -0.7960549613916381,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": -1.7684127975363178e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 1851,
+        "offset": 1.0,
+        "a": 1.0197080055530523,
+        "b": 0.7673821351618249,
+        "smearing": 1.3347172545610866,
+        "degenerate": false
+      },
+      "n_train": 1851,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.20460191523589188,
+        "bias_pct": -9.283023304892765,
+        "bias_pct_backcast": -40.234928410569054
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 1851,
+        "offset": 1.0,
+        "a": 0.89537522298506,
+        "b": 1.0837775983260893,
+        "degenerate": false
+      },
+      "n_train": 1851,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.21789015921160992,
+        "bias_pct": -9.486119928544315e-09,
+        "bias_pct_backcast": -28.06233493717545
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 1851,
+        "c": 5.760651942171479,
+        "b": 0.9337326011140251,
+        "degenerate": false
+      },
+      "n_train": 1851,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": -0.8259193550566861,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": -1.7684127975363178e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 5.2319430315361135,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.892356010383221,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 1.5679157624712874,
+        "b": 0.9994971995017334,
+        "smearing": 1.121975603380383,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.9038213186104525,
+        "bias_pct": 3.078124462361259,
+        "bias_pct_backcast": 3.078124462361259
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 1.6499742449490364,
+        "b": 0.9997756389891573,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.9079265813966699,
+        "bias_pct": 5.989016421729941e-08,
+        "bias_pct_backcast": 5.989016421729941e-08
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 5.709940125007805,
+        "b": 0.9846321060939127,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.892237454517759,
+        "bias_pct": -1.7684127975363178e-14,
+        "bias_pct_backcast": -1.7684127975363178e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 989,
+        "k": 37.34959349593496,
+        "degenerate": false
+      },
+      "n_train": 989,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -2.7393196213704236,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": -1.979744670816126e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 989,
+        "offset": 1.0,
+        "a": 1.2615115117690257,
+        "b": 1.1346175383903556,
+        "smearing": 1.3653729245670818,
+        "degenerate": false
+      },
+      "n_train": 989,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -0.018425574389274946,
+        "bias_pct": -1.556210039901128,
+        "bias_pct_backcast": -77.98876854560275
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 989,
+        "offset": 1.0,
+        "a": 1.343141442610244,
+        "b": 1.3278905191507502,
+        "degenerate": false
+      },
+      "n_train": 989,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -0.02322341989513843,
+        "bias_pct": -3.13266165023179e-07,
+        "bias_pct_backcast": -76.63787235981617
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 989,
+        "c": 42.89955315092907,
+        "b": 0.8085331286696318,
+        "degenerate": false
+      },
+      "n_train": 989,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -2.763811206211747,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": -1.979744670816126e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 37.34959349593496,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -2.8942879781648436,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 1.979744670816126e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 4.0744491226657,
+        "b": 0.8270043966767119,
+        "smearing": 1.0655487252876605,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": 0.9188752194522424,
+        "bias_pct": 5.402049170429966,
+        "bias_pct_backcast": 0.03213017690221633
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 4.256864736032578,
+        "b": 0.7699884097054125,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": 0.9077159362026092,
+        "bias_pct": 2.4571779158854722e-08,
+        "bias_pct_backcast": -6.146131723622403
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 125.01250378594052,
+        "b": 0.6317965990167701,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -2.6832381899408917,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 2217,
+        "k": 7.123025370990905,
+        "degenerate": false
+      },
+      "n_train": 2217,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": -0.8311035737077519,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 2217,
+        "offset": 1.0,
+        "a": 1.0953327449955337,
+        "b": 0.8862304730153627,
+        "smearing": 1.359892545445462,
+        "degenerate": false
+      },
+      "n_train": 2217,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.2408049252320641,
+        "bias_pct": -9.867543543434907,
+        "bias_pct_backcast": -41.128346952284986
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 2217,
+        "offset": 1.0,
+        "a": 1.0591385869113008,
+        "b": 1.1601238581038023,
+        "degenerate": false
+      },
+      "n_train": 2217,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.24935326495804488,
+        "bias_pct": 5.3684281679565064e-08,
+        "bias_pct_backcast": -29.40090458400973
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 2217,
+        "c": 7.67961520494503,
+        "b": 0.9494627158703901,
+        "degenerate": false
+      },
+      "n_train": 2217,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": -0.8527745825571584,
+        "bias_pct": 1.2224391152861939e-14,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 7.123025370990905,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.8631026015496104,
+        "bias_pct": -1.2224391152861939e-14,
+        "bias_pct_backcast": -1.2224391152861939e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 2.519760911291178,
+        "b": 0.8808865543282552,
+        "smearing": 1.0894667809972505,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.915476312427382,
+        "bias_pct": -3.4620909575532,
+        "bias_pct_backcast": -3.4620909575532
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 2.0480775852964666,
+        "b": 0.9843047523293026,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.9095044447194668,
+        "bias_pct": -1.5010329896599174e-10,
+        "bias_pct_backcast": -1.5010329896599174e-10
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 8.535301212175115,
+        "b": 0.9686106763019379,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.8776756410039356,
+        "bias_pct": -1.2224391152861939e-14,
+        "bias_pct_backcast": -1.2224391152861939e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 1851,
+        "k": 4.049207673060884,
+        "degenerate": false
+      },
+      "n_train": 1851,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": -1.491358817595838,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 1.8733155546301303e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 1851,
+        "offset": 1.0,
+        "a": 0.8598681750748687,
+        "b": 0.5695133430718488,
+        "smearing": 1.1641852917968527,
+        "degenerate": false
+      },
+      "n_train": 1851,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.14997232053331044,
+        "bias_pct": -4.6992190466562205,
+        "bias_pct_backcast": -47.215932739111715
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 1851,
+        "offset": 1.0,
+        "a": 0.4506445677181534,
+        "b": 1.020430177147228,
+        "degenerate": false
+      },
+      "n_train": 1851,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.15576231149082254,
+        "bias_pct": -5.935377410294566e-08,
+        "bias_pct_backcast": -38.10983079921124
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 1851,
+        "c": 4.193680470395679,
+        "b": 0.9563115684557718,
+        "degenerate": false
+      },
+      "n_train": 1851,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": -1.5103000155988169,
+        "bias_pct": 1.8733155546301303e-14,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 4.049207673060884,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.8751438887957028,
+        "bias_pct": 1.8733155546301303e-14,
+        "bias_pct_backcast": 1.8733155546301303e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 1.634784581392392,
+        "b": 0.9416992843699216,
+        "smearing": 1.0904310342882886,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.8957681481742181,
+        "bias_pct": 3.369450523426136,
+        "bias_pct_backcast": 3.369450523426136
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 1.7948960822693767,
+        "b": 0.9202017235779317,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.8967487780808027,
+        "bias_pct": -1.8866348282235506e-09,
+        "bias_pct_backcast": -1.8866348282235506e-09
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 6.768346438201996,
+        "b": 0.899028181834289,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.884166011285752,
+        "bias_pct": 1.8733155546301303e-14,
+        "bias_pct_backcast": 1.8733155546301303e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 989,
+        "k": 27.29113924050633,
+        "degenerate": false
+      },
+      "n_train": 989,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -5.58267694192754,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": -2.1092177684900935e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 989,
+        "offset": 1.0,
+        "a": 0.9964635898933849,
+        "b": 0.5192224418012036,
+        "smearing": 1.1341245724414526,
+        "degenerate": false
+      },
+      "n_train": 989,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -0.025835105400546565,
+        "bias_pct": -0.20261432750737787,
+        "bias_pct_backcast": -88.52154830078813
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 989,
+        "offset": 1.0,
+        "a": 0.7231508191490277,
+        "b": 0.7923330951239111,
+        "degenerate": false
+      },
+      "n_train": 989,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -0.025499224407120602,
+        "bias_pct": 5.4133559148384994e-08,
+        "bias_pct_backcast": -87.84704655149892
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 989,
+        "c": 27.273525120523754,
+        "b": 1.0040835137849837,
+        "degenerate": false
+      },
+      "n_train": 989,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -5.582320985699018,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": -2.1092177684900935e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 27.29113924050633,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -3.8359665736936632,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 3.7662825926241235,
+        "b": 0.7747372799685626,
+        "smearing": 1.074449413034318,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": 0.8519617203390416,
+        "bias_pct": 6.553683029916247,
+        "bias_pct_backcast": -1.876138800581929
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 3.9743361686174055,
+        "b": 0.6913343153678249,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": 0.8311893515488364,
+        "bias_pct": 9.498946589105875e-09,
+        "bias_pct_backcast": -9.87287188982047
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 95.61611993685749,
+        "b": 0.5442401367817404,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -3.578363405904362,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 2.1092177684900935e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 2217,
+        "k": 5.144778481012659,
+        "degenerate": false
+      },
+      "n_train": 2217,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": -1.6036274457428243,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 1.3985771209794377e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 2217,
+        "offset": 1.0,
+        "a": 0.9181193612498032,
+        "b": 0.6560568675907277,
+        "smearing": 1.171081972959139,
+        "degenerate": false
+      },
+      "n_train": 2217,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.18175750345732777,
+        "bias_pct": -4.922376156803683,
+        "bias_pct_backcast": -50.016292136650705
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 2217,
+        "offset": 1.0,
+        "a": 0.5751690657180605,
+        "b": 1.0756052668038394,
+        "degenerate": false
+      },
+      "n_train": 2217,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.18760983947565513,
+        "bias_pct": 2.5423866364470188e-08,
+        "bias_pct_backcast": -41.46336816331936
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 2217,
+        "c": 5.466513115816361,
+        "b": 0.9249036486392322,
+        "degenerate": false
+      },
+      "n_train": 2217,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": -1.6345215162478706,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": -2.7971542419588754e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 5.144778481012659,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.7917363532759958,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 2.496304890009078,
+        "b": 0.8187896520441089,
+        "smearing": 1.0654377585655246,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.9047617314266999,
+        "bias_pct": 0.08165235590204964,
+        "bias_pct_backcast": 0.08165235590204964
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 2.3805453141623194,
+        "b": 0.8535960795354198,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.9075252799203402,
+        "bias_pct": 1.2803973542566752e-09,
+        "bias_pct_backcast": 1.2803973542566752e-09
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 12.146016231202616,
+        "b": 0.8326192292517439,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.8848012380235677,
+        "bias_pct": 1.3985771209794377e-14,
+        "bias_pct_backcast": 1.3985771209794377e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 1851,
+        "k": 1.5770349238559123,
+        "degenerate": false
+      },
+      "n_train": 1851,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": -1.062714205028934,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 1851,
+        "offset": 1.0,
+        "a": 2.083527732049942,
+        "b": 0.38277625745629684,
+        "smearing": 2.550145116944543,
+        "degenerate": false
+      },
+      "n_train": 1851,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": -0.14093340330899395,
+        "bias_pct": -14.327273267942239,
+        "bias_pct_backcast": -37.71290782963156
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 1851,
+        "offset": 1.0,
+        "a": 2.725111197959016,
+        "b": 0.5085302688784543,
+        "degenerate": false
+      },
+      "n_train": 1851,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": -0.09569572804212378,
+        "bias_pct": -1.718382724301791e-11,
+        "bias_pct_backcast": -18.31286582811691
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 1851,
+        "c": 9.601043688824545,
+        "b": 0.6533737436267891,
+        "degenerate": false
+      },
+      "n_train": 1851,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": -1.2641173677625939,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 1.5770349238559123,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.8004168559833267,
+        "bias_pct": -1.481364417501544e-14,
+        "bias_pct_backcast": -1.481364417501544e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 1.4781409736233602,
+        "b": 0.8571623698959241,
+        "smearing": 1.2882324424751044,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.8063266809893435,
+        "bias_pct": -4.944786096231921,
+        "bias_pct_backcast": -4.944786096231921
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 0.9785238964448109,
+        "b": 0.9439139353211831,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.8127737436911986,
+        "bias_pct": -2.6041349504584894e-09,
+        "bias_pct_backcast": -2.6041349504584894e-09
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 2.675652531493725,
+        "b": 0.9433266816457624,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 672,
+      "fit_stats": {
+        "r2_log": 0.810300320471776,
+        "bias_pct": -2.962728835003088e-14,
+        "bias_pct_backcast": -2.962728835003088e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 989,
+        "k": 4.192490836550002,
+        "degenerate": false
+      },
+      "n_train": 989,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -1.194912788245042,
+        "bias_pct": 1.4073386317446509e-14,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 989,
+        "offset": 1.0,
+        "a": 1.3584279394565355,
+        "b": 0.61166138193251,
+        "smearing": 2.493668483603108,
+        "degenerate": false
+      },
+      "n_train": 989,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -0.43702813449243494,
+        "bias_pct": 5.344865243205453,
+        "bias_pct_backcast": -56.51810786800884
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 989,
+        "offset": 1.0,
+        "a": 2.160865513107195,
+        "b": 0.6045146809474929,
+        "degenerate": false
+      },
+      "n_train": 989,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -0.42384067824285854,
+        "bias_pct": 1.082108303302989e-08,
+        "bias_pct_backcast": -61.707211294655316
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 989,
+        "c": 19.687232850092265,
+        "b": 0.6461040891912733,
+        "degenerate": false
+      },
+      "n_train": 989,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -1.2557464698180065,
+        "bias_pct": 1.4073386317446509e-14,
+        "bias_pct_backcast": 1.4073386317446509e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 4.192490836550002,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -2.6637787579624006,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 4.489791336172829,
+        "b": 0.46484539940464675,
+        "smearing": 1.508821546428897,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": 0.586488753528952,
+        "bias_pct": 5.083243088199875,
+        "bias_pct_backcast": 0.9535721462938256
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 4.898184186358449,
+        "b": 0.4566264453336945,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": 0.5948302984842331,
+        "bias_pct": 1.4629848012438343e-09,
+        "bias_pct_backcast": -4.148420720991254
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 177.59726013266683,
+        "b": 0.41750931810157843,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 70,
+      "fit_stats": {
+        "r2_log": -2.2756293840373165,
+        "bias_pct": 1.4073386317446507e-14,
+        "bias_pct_backcast": 1.4073386317446507e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 2217,
+        "k": 1.7003767627771225,
+        "degenerate": false
+      },
+      "n_train": 2217,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": -0.778969664905713,
+        "bias_pct": 1.3091173309870248e-14,
+        "bias_pct_backcast": 1.3091173309870248e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 2217,
+        "offset": 1.0,
+        "a": 1.873511079862648,
+        "b": 0.46104222656470323,
+        "smearing": 2.6816569753307764,
+        "degenerate": false
+      },
+      "n_train": 2217,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": -0.1049845904303508,
+        "bias_pct": -8.601313157894275,
+        "bias_pct_backcast": -31.06542320560464
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 2217,
+        "offset": 1.0,
+        "a": 2.6496945768380553,
+        "b": 0.5401755915367372,
+        "degenerate": false
+      },
+      "n_train": 2217,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": -0.05718456847630704,
+        "bias_pct": -1.0158750488459313e-11,
+        "bias_pct_backcast": -19.310420479071958
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 2217,
+        "c": 10.53846854938514,
+        "b": 0.6507142951258532,
+        "degenerate": false
+      },
+      "n_train": 2217,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": -0.9452058934058274,
+        "bias_pct": 1.3091173309870248e-14,
+        "bias_pct_backcast": 1.3091173309870248e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 1.7003767627771222,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.7169737820015343,
+        "bias_pct": -1.3091173309870248e-14,
+        "bias_pct_backcast": -1.3091173309870248e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 2.31262865813467,
+        "b": 0.7762927162912311,
+        "smearing": 1.2816040958725505,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.7730449214981586,
+        "bias_pct": -4.928222414149095,
+        "bias_pct_backcast": -4.928222414149095
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 1.5592065827398711,
+        "b": 0.8900818838628075,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.7754672510214987,
+        "bias_pct": -4.1091883902351723e-10,
+        "bias_pct_backcast": -4.1091883902351723e-10
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_AQUA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 4.783928682395278,
+        "b": 0.8894538419960432,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 700,
+      "fit_stats": {
+        "r2_log": 0.7730034114383623,
+        "bias_pct": 2.6182346619740495e-14,
+        "bias_pct_backcast": 2.6182346619740495e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 1827,
+        "k": 12.45278450363196,
+        "degenerate": false
+      },
+      "n_train": 1827,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": -1.89171545740107,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 1827,
+        "offset": 1.0,
+        "a": 1.2294250513435752,
+        "b": 0.5719709357540744,
+        "smearing": 1.5344180874993858,
+        "degenerate": false
+      },
+      "n_train": 1827,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": -0.13980193653987527,
+        "bias_pct": -6.943257246968619,
+        "bias_pct_backcast": -64.08175108153597
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 1827,
+        "offset": 1.0,
+        "a": 1.332750276413058,
+        "b": 1.0394925640339265,
+        "degenerate": false
+      },
+      "n_train": 1827,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": -0.14870142907000017,
+        "bias_pct": -7.44314336006251e-09,
+        "bias_pct_backcast": -51.01473805204081
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 1827,
+        "c": 14.106096677768367,
+        "b": 0.849191604227677,
+        "degenerate": false
+      },
+      "n_train": 1827,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": -1.9398424751590921,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 12.45278450363196,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": 0.887897521950015,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 2.1201430803028027,
+        "b": 1.0403586971573202,
+        "smearing": 1.0945944703516959,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": 0.9265525954466207,
+        "bias_pct": -10.386735528240845,
+        "bias_pct_backcast": -10.386735528240845
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 0.3009362299389995,
+        "b": 1.4654936653239232,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": 0.7801931814486934,
+        "bias_pct": -1.87503217351258e-08,
+        "bias_pct_backcast": -1.87503217351258e-08
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 1.7803771272494067,
+        "b": 1.4109246559527862,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": 0.6705369169438906,
+        "bias_pct": 3.5368255950726356e-14,
+        "bias_pct_backcast": 3.5368255950726356e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 1003,
+        "k": 11.485,
+        "degenerate": false
+      },
+      "n_train": 1003,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": -1.902083611112722,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 1003,
+        "offset": 1.0,
+        "a": 1.1532941007890913,
+        "b": 0.8630637419860206,
+        "smearing": 1.3163461682373272,
+        "degenerate": false
+      },
+      "n_train": 1003,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": 0.11976756126863153,
+        "bias_pct": -2.881506449210858,
+        "bias_pct_backcast": -59.3436661930942
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 1003,
+        "offset": 1.0,
+        "a": 1.157772406561255,
+        "b": 1.0517623238426985,
+        "degenerate": false
+      },
+      "n_train": 1003,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": 0.11200497301401047,
+        "bias_pct": -2.772988765518731e-08,
+        "bias_pct_backcast": -56.67303624520157
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 1003,
+        "c": 17.168984462521582,
+        "b": 0.5617538838751978,
+        "degenerate": false
+      },
+      "n_train": 1003,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": -2.0030500450112805,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 11.485,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": -2.1041079905157885,
+        "bias_pct": -1.979744670816126e-14,
+        "bias_pct_backcast": -1.979744670816126e-14
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 3.859011446647009,
+        "b": 0.643001067024784,
+        "smearing": 1.0385801078857237,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": 0.944364333774501,
+        "bias_pct": -4.180647357753927,
+        "bias_pct_backcast": -7.331356643919618
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 3.682379158692914,
+        "b": 0.7054414371204913,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": 0.9371501248687218,
+        "bias_pct": 5.2758334517259194e-08,
+        "bias_pct_backcast": -2.595178316757931
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 49.1521444868049,
+        "b": 0.6686397104579288,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": -1.6639666675186966,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 2191,
+        "k": 12.137030995106036,
+        "degenerate": false
+      },
+      "n_train": 2191,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": -1.4222697592972504,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 2191,
+        "offset": 1.0,
+        "a": 1.2217456116050298,
+        "b": 0.8501889687325513,
+        "smearing": 1.4875814110005423,
+        "degenerate": false
+      },
+      "n_train": 2191,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.03267562133176516,
+        "bias_pct": -9.565342900267353,
+        "bias_pct_backcast": -54.4743274140031
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 2191,
+        "offset": 1.0,
+        "a": 1.3247376285611963,
+        "b": 1.1925934249129457,
+        "degenerate": false
+      },
+      "n_train": 2191,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.03239258376541543,
+        "bias_pct": 6.69205590344963e-08,
+        "bias_pct_backcast": -41.732113839752785
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 2191,
+        "c": 13.261044334823909,
+        "b": 0.9204960610081043,
+        "degenerate": false
+      },
+      "n_train": 2191,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": -1.4507146262679904,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 12.137030995106036,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.7860349262441109,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 3.1826943572165254,
+        "b": 0.8288975201986649,
+        "smearing": 1.0743492492535756,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.9248717284021276,
+        "bias_pct": -10.364408815887906,
+        "bias_pct_backcast": -10.364408815887906
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 1.9233980951491745,
+        "b": 1.1083113870348595,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.8109388268980164,
+        "bias_pct": -6.1611787117804875e-09,
+        "bias_pct_backcast": -6.1611787117804875e-09
+      }
+    },
+    {
+      "metric": "n_hotspots",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 8.419739986796184,
+        "b": 1.070396527105215,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.7036788164595367,
+        "bias_pct": 1.2224391152861939e-14,
+        "bias_pct_backcast": 1.2224391152861939e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 1827,
+        "k": 7.55054432348367,
+        "degenerate": false
+      },
+      "n_train": 1827,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": -2.774492074232067,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 1.8733155546301303e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 1827,
+        "offset": 1.0,
+        "a": 0.9965321673471166,
+        "b": 0.3442396798400736,
+        "smearing": 1.2214787879987774,
+        "degenerate": false
+      },
+      "n_train": 1827,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": -0.05675949356142218,
+        "bias_pct": -2.669301474323147,
+        "bias_pct_backcast": -68.48638951920748
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 1827,
+        "offset": 1.0,
+        "a": 0.7395582932071161,
+        "b": 0.839499594106901,
+        "degenerate": false
+      },
+      "n_train": 1827,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": -0.07983782353708846,
+        "bias_pct": 6.283440189671066e-07,
+        "bias_pct_backcast": -59.721806644232714
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 1827,
+        "c": 8.71821417027617,
+        "b": 0.6943682254005076,
+        "degenerate": false
+      },
+      "n_train": 1827,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": -2.849477330185504,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 7.55054432348367,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": 0.8867504627663398,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 2.1293528722241324,
+        "b": 0.9438967752578442,
+        "smearing": 1.0530693490809275,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": 0.9420416740473708,
+        "bias_pct": -6.734801798278067,
+        "bias_pct_backcast": -6.734801798278067
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 1.0193458051265027,
+        "b": 1.2227513094036149,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": 0.8705259256585096,
+        "bias_pct": -1.2738545771484887e-11,
+        "bias_pct_backcast": -1.2738545771484887e-11
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 3.796581497046304,
+        "b": 1.156027270684905,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": 0.7878510689572004,
+        "bias_pct": 1.8733155546301303e-14,
+        "bias_pct_backcast": 1.8733155546301303e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 1003,
+        "k": 8.229007633587786,
+        "degenerate": false
+      },
+      "n_train": 1003,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": -3.8887438986996736,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 1003,
+        "offset": 1.0,
+        "a": 0.924061411656774,
+        "b": 0.5528720175979441,
+        "smearing": 1.1122146825028045,
+        "degenerate": false
+      },
+      "n_train": 1003,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": 0.10972635477138226,
+        "bias_pct": -1.4997006838694673,
+        "bias_pct_backcast": -69.87735015413949
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 1003,
+        "offset": 1.0,
+        "a": 0.5614521611462129,
+        "b": 0.9114444595422737,
+        "degenerate": false
+      },
+      "n_train": 1003,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": 0.10784742259515379,
+        "bias_pct": 1.8552046726308314e-08,
+        "bias_pct_backcast": -66.51814392528868
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 1003,
+        "c": 9.626415795155314,
+        "b": 0.6346936848269126,
+        "degenerate": false
+      },
+      "n_train": 1003,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": -3.9881371492153663,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 8.229007633587786,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": -2.747440537019215,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 3.5517840551764386,
+        "b": 0.5969210002152083,
+        "smearing": 1.035429110996483,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": 0.9404027671310288,
+        "bias_pct": 0.36106182557120736,
+        "bias_pct_backcast": -4.524525714110574
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 3.5215224018955293,
+        "b": 0.613036652678722,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": 0.941184124514242,
+        "bias_pct": 4.740466934681485e-10,
+        "bias_pct_backcast": -4.708149505027349
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 50.00882872755263,
+        "b": 0.5308929176412573,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": -1.9223289636698606,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": -2.1092177684900935e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 2191,
+        "k": 7.389772727272727,
+        "degenerate": false
+      },
+      "n_train": 2191,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": -2.3109538032045576,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 2191,
+        "offset": 1.0,
+        "a": 0.9989874961725957,
+        "b": 0.575202719687922,
+        "smearing": 1.204010972062631,
+        "degenerate": false
+      },
+      "n_train": 2191,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.0584881887294495,
+        "bias_pct": -4.175418884872508,
+        "bias_pct_backcast": -61.79486340560965
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 2191,
+        "offset": 1.0,
+        "a": 0.7411723160358138,
+        "b": 1.0186840135024615,
+        "degenerate": false
+      },
+      "n_train": 2191,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.05019540700910885,
+        "bias_pct": 3.4756459606596297e-09,
+        "bias_pct_backcast": -53.274620684680116
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 2191,
+        "c": 8.120717299854675,
+        "b": 0.8541132656671397,
+        "degenerate": false
+      },
+      "n_train": 2191,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": -2.358002201159137,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 2.7971542419588754e-14
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 7.389772727272727,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.6553169205352469,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 3.0522303783180784,
+        "b": 0.7537032380796957,
+        "smearing": 1.0413666244809214,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.9410365564137158,
+        "bias_pct": -5.375873452883823,
+        "bias_pct_backcast": -5.375873452883823
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 2.379992972143878,
+        "b": 0.9172687474996417,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.8993842563425879,
+        "bias_pct": -1.6705723994675187e-09,
+        "bias_pct_backcast": -1.6705723994675187e-09
+      }
+    },
+    {
+      "metric": "fire_cell_days",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 13.759107600924537,
+        "b": 0.8690791271438072,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.8290076939627683,
+        "bias_pct": 1.3985771209794377e-14,
+        "bias_pct_backcast": 1.3985771209794377e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 1827,
+        "k": 7.09669703296465,
+        "degenerate": false
+      },
+      "n_train": 1827,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": -2.1963095764528546,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 1827,
+        "offset": 1.0,
+        "a": 2.43839541656987,
+        "b": 0.25359433588442293,
+        "smearing": 3.3834314695788437,
+        "degenerate": false
+      },
+      "n_train": 1827,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": -0.5593040462043195,
+        "bias_pct": -9.71292951387139,
+        "bias_pct_backcast": -62.90708695078732
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 1827,
+        "offset": 1.0,
+        "a": 3.47504506219919,
+        "b": 0.4244971300986064,
+        "degenerate": false
+      },
+      "n_train": 1827,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": -0.5418477046161045,
+        "bias_pct": -8.945064973183654e-08,
+        "bias_pct_backcast": -45.506217518744315
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 1827,
+        "c": 31.753532289750602,
+        "b": 0.6130510714722033,
+        "degenerate": false
+      },
+      "n_train": 1827,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": -2.3854274958633694,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 7.096697032964652,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": 0.8607805187352946,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 1.9743372292746726,
+        "b": 0.9500450490561589,
+        "smearing": 1.189827658667764,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": 0.8791389081527035,
+        "bias_pct": -17.340713198146602,
+        "bias_pct_backcast": -17.340713198146602
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": -0.8502850375963771,
+        "b": 1.3652839537739196,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": 0.6957805103900265,
+        "bias_pct": 1.3510043487614082e-10,
+        "bias_pct_backcast": 1.3510043487614082e-10
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "D",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 0.43763712610357963,
+        "b": 1.362297893265041,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 443,
+      "fit_stats": {
+        "r2_log": 0.6815842869013891,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 1003,
+        "k": 1.576434643671712,
+        "degenerate": false
+      },
+      "n_train": 1003,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": -1.0366842662540297,
+        "bias_pct": 1.4073386317446509e-14,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 1003,
+        "offset": 1.0,
+        "a": 1.2496453047974212,
+        "b": 0.37541551490886893,
+        "smearing": 2.726666689293612,
+        "degenerate": false
+      },
+      "n_train": 1003,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": -0.5753290471584227,
+        "bias_pct": 1.5125229953106858,
+        "bias_pct_backcast": -52.36856474779456
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 1003,
+        "offset": 1.0,
+        "a": 2.1258492896777863,
+        "b": 0.39818904882600437,
+        "degenerate": false
+      },
+      "n_train": 1003,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": -0.5521688785464522,
+        "bias_pct": 1.311400357218618e-09,
+        "bias_pct_backcast": -53.03546240513069
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 1003,
+        "c": 13.365492596154434,
+        "b": 0.48120479902516194,
+        "degenerate": false
+      },
+      "n_train": 1003,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": -1.2029003096724287,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 1.5764346436717125,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": -2.4634062115905353,
+        "bias_pct": 2.8146772634893015e-14,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 4.503546960624841,
+        "b": 0.3496956361588718,
+        "smearing": 2.659219041345666,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": 0.03029768680485334,
+        "bias_pct": 43.67178930719488,
+        "bias_pct_backcast": 38.11917166945377
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 5.198432163212649,
+        "b": 0.33710417594473413,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": 0.26325230286787504,
+        "bias_pct": 5.370122751011238e-09,
+        "bias_pct_backcast": -4.200878273361417
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "N",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 6.512792944037274,
+        "b": 0.8116862881164617,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 185,
+      "fit_stats": {
+        "r2_log": -2.3111753195153457,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 2191,
+        "k": 5.0432475840479105,
+        "degenerate": false
+      },
+      "n_train": 2191,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": -1.4107466230932162,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 2191,
+        "offset": 1.0,
+        "a": 2.1053412280507344,
+        "b": 0.42283138770301565,
+        "smearing": 3.3403123360010625,
+        "degenerate": false
+      },
+      "n_train": 2191,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": -0.42734353314501083,
+        "bias_pct": -7.0549633832309055,
+        "bias_pct_backcast": -46.301215701935604
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 2191,
+        "offset": 1.0,
+        "a": 3.1830008287085487,
+        "b": 0.5040642168370519,
+        "degenerate": false
+      },
+      "n_train": 2191,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": -0.39892820476215496,
+        "bias_pct": -4.454140806950253e-10,
+        "bias_pct_backcast": -35.82326661853849
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "cell_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 2191,
+        "c": 23.040310845385843,
+        "b": 0.6385845370668011,
+        "degenerate": false
+      },
+      "n_train": 2191,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": -1.5681545493338809,
+        "bias_pct": 0.0,
+        "bias_pct_backcast": 0.0
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "ratio",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "ratio",
+        "n_fit": 12,
+        "k": 5.0432475840479105,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.7544204212961081,
+        "bias_pct": 1.3091173309870248e-14,
+        "bias_pct_backcast": 1.3091173309870248e-14
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "loglog",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "loglog",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 3.1217550997456516,
+        "b": 0.7770564309110611,
+        "smearing": 1.2881306667343075,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.813626358271877,
+        "bias_pct": -5.3655115839901155,
+        "bias_pct_backcast": -5.3655115839901155
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "poisson",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "poisson",
+        "n_fit": 12,
+        "offset": 1.0,
+        "a": 1.4700903758480965,
+        "b": 1.017945737523656,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.7482001258050934,
+        "bias_pct": 4.714026779497798e-09,
+        "bias_pct_backcast": 4.714026779497798e-09
+      }
+    },
+    {
+      "metric": "frp_sum",
+      "model": "powerlaw_total",
+      "modis_source": "MODIS_TERRA",
+      "daynight": "ALL",
+      "fit_level": "national_period",
+      "params": {
+        "model": "powerlaw_total",
+        "n_fit": 12,
+        "c": 4.44154591683551,
+        "b": 1.0154666302988047,
+        "degenerate": false
+      },
+      "n_train": 12,
+      "n_pairs": 540,
+      "fit_stats": {
+        "r2_log": 0.7412229847067808,
+        "bias_pct": -1.3091173309870248e-14,
+        "bias_pct_backcast": -1.3091173309870248e-14
+      }
+    }
+  ]
+}
