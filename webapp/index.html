@@ -116,6 +116,8 @@
   .kpi .k { font-size: 12px; color: var(--muted); }
   .kpi .v { font-size: 22px; font-weight: 600; line-height: 1.25; }
   .kpi .d { font-size: 12px; color: var(--text-2); }
+  .compare { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid #f37a22; border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.5; color: var(--text-2); }
+  .compare p { margin: 0 0 6px; } .compare p:last-child { margin: 0; }
 
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
   table.cal { width: 100%; border-collapse: separate; border-spacing: 2px; font-size: 11px;
@@ -227,6 +229,8 @@
       </section>
 
       <section><div class="kpis" id="kpis"></div></section>
+
+      <section id="compareSec"><h2>How does the latest fire activity compare?</h2><div class="compare" id="compare"></div></section>
 
       <section>
         <h2 id="calTitle">Hotspots per month</h2>

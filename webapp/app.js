@@ -916,6 +916,33 @@ function el(tag, props = {}, ...kids) {
   return e;
 }
 
+// A few plain sentences: how the latest month and the latest full year compare with the past.
+const ordinal = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 >> 3) ^ 1 && n % 10 < 4 ? n % 10 : 0]);
+const vsNormal = p => Math.abs(p) < 10 ? 'about the same as' : Math.abs(p) >= 100 && p > 0 ? nf(Math.abs(p)) + '% above (more than double)' : nf(Math.abs(p)) + '% ' + (p > 0 ? 'above' : 'below');
+function renderCompare(md, harm) {
+  const box = $('compare'); box.textContent = '';
+  const add = t => box.append(el('p', { textContent: t }));
+  const c = md.latest;
+  if (!c) { $('compareSec').hidden = true; return; }
+  $('compareSec').hidden = false;
+  const moy = c.m % 12, y = 2000 + Math.floor(c.m / 12), name = MONTHS_LONG[moy] + ' ' + y, unit = harm ? 'hotspots (VIIRS-equivalent)' : 'hotspots';
+  if (c.anom === null) add(`${name} had ${nf(c.v)} ${unit}, in a month with normally none in the chosen dates.`);
+  else add(`${name} had ${nf(c.v)} ${unit}, ${vsNormal(c.anom)} the usual ${MONTHS_LONG[moy]} (median ${nf(md.med[moy])}).`);
+  const same = md.rows.map(r => r.cells[moy]).filter(x => x.exists && !x.partial);
+  if (same.length > 2) {
+    const rank = 1 + same.filter(x => x.v > c.v).length, others = same.filter(x => x.m !== c.m);
+    const near = others.reduce((a, x) => (Math.abs(x.v - c.v) < Math.abs(a.v - c.v) ? x : a));
+    add(`Of the ${same.length} ${MONTHS_LONG[moy]}s in the chosen dates, it ranks ${ordinal(rank)} (1st = the most hotspots). The closest earlier match is ${MONTHS_LONG[moy]} ${2000 + Math.floor(near.m / 12)} (${nf(near.v)}).`);
+  }
+  const full = md.rows.filter(r => r.complete);
+  if (full.length > 2) {
+    const last = full[full.length - 1], avg = full.reduce((a, r) => a + r.sum, 0) / full.length, p = (last.sum - avg) / avg * 100;
+    add(`The last full year, ${last.y}, had ${nf(last.sum)} ${unit}, ${vsNormal(p)} the average full year (${nf(avg)}).`);
+  }
+  if (!harm && md.rows.some(r => r.y < 2012) && c.m >= md.ix.viirsStart)
+    add('Note: in Raw view the 2012 sensor change inflates later years. Switch to Harmonized for a like-for-like comparison.');
+}
+
 function render() {
   if (!state.result) return;
   const md = state.model = buildModel(), harm = state.mode === 'harm', anom = state.view === 'anom';
@@ -939,6 +966,8 @@ function render() {
       c.anom === null ? 'no fires normally seen in ' + MONTHS[moy]
         : pct(c.anom) + ' against the ' + MONTHS[moy] + ' median (' + nf(md.med[moy]) + ')');
   }
+
+  renderCompare(md, harm);
 
   // --- calendar table ---
   $('calTitle').textContent = anom ? 'Difference from the monthly median' : 'Hotspots per month';

@@ -92,6 +92,10 @@ not correct for MODIS sensor ageing or for individual satellite outages.
   chosen years. Blue = below normal, grey = normal, red = above normal.
 - **Headline figures:** total, most active year, peak month of the season, latest month
   against its median.
+- **"How does the latest fire activity compare?"** A few plain sentences: the latest month
+  against the median of the same month (percent above or below), its rank among all the same
+  months (1st = most hotspots) and the closest earlier match, and the last full year against
+  the average full year. In Raw view it adds a warning about the 2012 sensor change.
 - **Charts:** unusual years, monthly record, fire season with its critical period (table in
   section 11).
 - The date range is chosen month by month (From / To), or with **Last 12 months** / **All**.
