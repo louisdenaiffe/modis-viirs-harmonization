@@ -15,7 +15,7 @@ other columns are in `outputs_full/benchmark_ianis/scores_all.csv`.
   His: `pred_n` / `pred_frp` from his truth file (Aqua only, fitted on 2012-2017).
 - **Seen countries:** ours fitted on all 236 countries, scored on all countries.
 - **Unseen countries:** ours fitted on half A only, scored on the half-B countries
-  (`--countries`, 118 countries). His model has seen these countries, so this row is ours
+  (`--countries`, 119 countries). His model has seen these countries, so this row is ours
   unseen against his seen.
 
 ## One problem in the scorer
@@ -53,11 +53,12 @@ before scoring; the scorer was not changed. His own published scores reproduce e
 - **nrmse** gives the same winners, with two exceptions on seen countries: day counts at cell
   level are a tie (92 vs 91), and for unseen countries his night counts are ahead at global level
   (17 vs 19) while ours are ahead from region down.
-- **Masked truth** changes no winner on seen countries. On unseen countries night counts become
+- **Masked truth** changes no winner on seen countries, except that night counts become a tie
+  at global level (8.8 vs 9.6). On unseen countries night counts become
   a tie at global, region and country (10.7 / 23.5 / 27.8 vs 12.2 / 24.0 / 27.6).
 - **`glm_regional`** is within 1 point of `glm_cell` almost everywhere; `glm_cell` is 1-2 points
   better on seen countries at country and block level.
-- **Country view, seen countries** (countries with enough fire): median |annual-total bias|
+- **Country view, seen countries** (countries with enough fire): median |bias of the 2018-2021 total|
   6.0 % (ours) vs 11.9 % (his) for counts, 5.1 % vs 15.7 % for FRP; share of countries within
   ±20 %: 76 % vs 66 % (counts), 80 % vs 62 % (FRP); median monthly rank correlation 0.94 vs 0.92.
 
