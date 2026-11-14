@@ -662,7 +662,7 @@ Promise.all([ready, new Promise(res => map.once('load', res))]).then(() => {
 
 /* ================= 5. Panel ================= */
 // m0..m1: the chosen date range, as month numbers since January 2000; y0..y1 are its years.
-const state = { sel: null, result: null, mode: 'harm', view: 'count', m0: 0, m1: 0, y0: 0, y1: 0, model: null, token: 0 };
+const state = { sel: null, result: null, mode: 'harm', view: 'count', fmt: 'xlsx', m0: 0, m1: 0, y0: 0, y1: 0, model: null, token: 0 };
 const fullYears = () => state.m0 % 12 === 0 && state.m1 % 12 === 11;
 const monthName = m => `${MONTHS[m % 12]} ${2000 + Math.floor(m / 12)}`;
 const rangeLabel = () => fullYears() ? (state.y0 === state.y1 ? `${state.y0}` : `${state.y0}–${state.y1}`) : `${monthName(state.m0)} – ${monthName(state.m1)}`;
@@ -757,7 +757,7 @@ function segmented(id, key) {
     render();
   });
 }
-segmented('modeSeg', 'mode'); segmented('viewSeg', 'view');
+segmented('modeSeg', 'mode'); segmented('viewSeg', 'view'); segmented('fmtSeg', 'fmt');
 // Date range: a start month + year and an end month + year.
 function setRange(m0, m1) {
   if (m0 > m1) [m0, m1] = [m1, m0];
@@ -899,17 +899,17 @@ function render() {
     '“–” means outside the chosen dates or no satellite data (the record runs from ' + md.ix.firstDate.slice(0, 7) + ' to ' + md.ix.lastDate.slice(0, 7) + ').';
 
   drawSeason(md, unit);
-  drawCompare(md);
   drawAnomaly(md, unit);
   drawMonthly(md);
-  drawYtd(md, unit);
 
   const rawPts = md.rows.reduce((a, r) => a + r.cells.reduce((x, c) => x + (c.exists ? state.result.modis[c.m] + state.result.viirs[c.m] : 0), 0), 0);
   state.rawPoints = rawPts;
-  $('dlPoints').disabled = rawPts > 500000 || rawPts === 0;
-  $('dlNote').textContent = rawPts > 500000
-    ? `This search holds ${nf(rawPts)} individual hotspots; the hotspot file is limited to 500,000. Select a smaller area or fewer years.`
-    : `The hotspot file will contain ${nf(rawPts)} rows (every MODIS and VIIRS detection in the area and years chosen).`;
+  const limit = state.fmt === 'xlsx' ? MAX_XLSX_ROWS : MAX_POINTS;
+  $('dlPoints').disabled = rawPts > limit || rawPts === 0;
+  const mb = Math.max(1, Math.round(rawPts * (state.fmt === 'xlsx' ? 30 : 75) / 1e6));
+  $('dlNote').textContent = rawPts > limit
+    ? `This search holds ${nf(rawPts)} individual hotspots; ${state.fmt === 'xlsx' ? `Excel files hold at most ${nf(MAX_XLSX_ROWS)} rows (use CSV for up to ${nf(MAX_POINTS)})` : `the hotspot file is limited to ${nf(MAX_POINTS)}`}. Select a smaller area or a shorter date range.`
+    : `The hotspot file will contain ${nf(rawPts)} rows, about ${mb} MB (every MODIS and VIIRS detection in the area and dates chosen).`;
   $('sourceNote').textContent = `Source: NASA FIRMS archive (MODIS Collection 6.1, VIIRS S-NPP 375 m), ${md.ix.coverage}, ` +
     `${md.ix.firstDate} to ${md.ix.lastDate}. Harmonization ratios measured over Feb 2012 – ${MONTHS[md.ix.overlap[1] % 12]} ${2000 + Math.floor(md.ix.overlap[1] / 12)}.`;
 }
@@ -1028,54 +1028,6 @@ const legend = (id, items) => {
   for (const [c, t] of items) { const sp = el('span', { textContent: t }); sp.style.setProperty('--c', c); lg.append(sp); }
 };
 
-// Why harmonize: every MODIS and VIIRS point added up, against the harmonized total, per year.
-function drawCompare(md) {
-  const svg = $('compareChart'), W = 560, H = 220, pad = { l: 48, r: 12, t: 16, b: 26 }, r = state.result;
-  const rows = md.rows.map(row => {
-    let naive = 0, harm = 0;
-    for (const c of row.cells) if (c.exists) { naive += r.modis[c.m] + r.viirs[c.m]; harm += r.harm[c.m]; }
-    return { y: row.y, naive, harm, complete: row.complete };
-  });
-  legend('compareLegend', [[C_NAIVE, 'Naive: all MODIS + all VIIRS points added up'], [C_HARM, 'Harmonized (VIIRS-equivalent)']]);
-  const vals = rows.flatMap(d => [d.naive, d.harm]);
-  const log = vals.every(v => v > 0) && Math.max(...vals) / Math.min(...vals) > 8;
-  svg.textContent = '';
-  svg.append(svgEl('rect', { width: W, height: H, fill: '#1a1a19' }));
-  let y;
-  if (log) {
-    // Log scale: a jump of the same factor looks the same size at any level.
-    const lo = Math.pow(10, Math.floor(Math.log10(Math.min(...vals)))), hi = Math.pow(10, Math.ceil(Math.log10(Math.max(...vals))));
-    y = v => H - pad.b - (Math.log10(v / lo) / Math.log10(hi / lo)) * (H - pad.t - pad.b);
-    for (let p = lo; p <= hi; p *= 10) for (const m of [1, 2, 5]) {
-      const v = p * m; if (v > hi) break;
-      svg.append(svgEl('line', { x1: pad.l, x2: W - pad.r, y1: y(v), y2: y(v), stroke: m === 1 ? '#383835' : '#2c2c2a', 'stroke-width': 1 }));
-      label(svg, pad.l - 6, y(v) + 4, compact(v), 'end');
-    }
-  } else y = axes(svg, W, H, pad, niceMax(Math.max(...vals, 1)));
-  const n = rows.length, slot = (W - pad.l - pad.r) / n, x = i => pad.l + slot * (i + 0.5);
-  const i12 = rows.findIndex(d => d.y === 2012);
-  if (i12 > 0) {
-    const lx = x(i12) - slot / 2;
-    svg.append(svgEl('line', { x1: lx, x2: lx, y1: pad.t - 6, y2: H - pad.b, stroke: '#898781', 'stroke-dasharray': '3 3' }));
-    label(svg, lx + 4, pad.t + 2, 'VIIRS starts', 'start', '#898781', 10);
-  }
-  for (const [key, color] of [['naive', C_NAIVE], ['harm', C_HARM]]) {
-    svg.append(svgEl('path', { d: rows.map((d, i) => `${i ? 'L' : 'M'}${x(i)},${y(d[key] || 1)}`).join(''), fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-linejoin': 'round' }));
-    rows.forEach((d, i) => svg.append(svgEl('circle', { cx: x(i), cy: y(d[key] || 1), r: 4, fill: d.complete ? color : '#1a1a19', stroke: d.complete ? '#1a1a19' : color, 'stroke-width': 2 })));
-  }
-  const every = n > 18 ? 5 : n > 9 ? 2 : 1;
-  rows.forEach((d, i) => {
-    if (d.y % every === 0 || n <= 9) label(svg, x(i), H - 8, d.y);
-    const g = svgEl('g', { class: 'hit' });
-    g.dataset.tip = `${d.y}${d.complete ? '' : ' (incomplete year)'}\nNaive sum: ${nf(d.naive)}\nHarmonized: ${nf(d.harm)}`;
-    g.append(svgEl('line', { class: 'cross', x1: x(i), x2: x(i), y1: pad.t, y2: H - pad.b, stroke: '#898781', opacity: 0 }));
-    g.append(svgEl('rect', { x: x(i) - slot / 2, y: pad.t, width: slot, height: H - pad.t - pad.b, fill: 'transparent' }));
-    svg.append(g);
-  });
-  $('compareNote').textContent = (log ? 'Log scale. ' : '') + 'Adding the two sensors together jumps when VIIRS starts in 2012; the harmonized line stays comparable across the whole record.' +
-    (rows.some(d => !d.complete) ? ' Hollow dots are incomplete years.' : '');
-}
-
 // Yearly anomaly: how far each year is above or below the average of the complete years in
 // the range. An unfinished year is compared with the same months of the other years.
 const C_ABOVE = '#e8471a', C_BELOW = '#5b8bd0';
@@ -1172,62 +1124,6 @@ function drawMonthly(md) {
   $('monthlyNote').textContent = 'Every month of the selected years in one line, to spot the biggest fire months and long-term changes. From February 2012 the counts come from VIIRS; before that, MODIS converted to VIIRS units.';
 }
 
-// Year to date: hotspots added up month by month for the newest year, against the same
-// running total in the earlier complete years of the range.
-function drawYtd(md, unit) {
-  const svg = $('ytdChart'), W = 560, H = 220, pad = { l: 48, r: 46, t: 12, b: 26 };
-  const cum = cells => { let t = 0; return cells.map(c => (c.exists && !c.partial ? (t += c.v) : null)); };
-  const current = [...md.rows].reverse().find(r => r.cells.some(c => c.exists && !c.partial));
-  const past = md.rows.filter(r => r !== current && r.cells.every(c => c.exists && !c.partial)).map(r => ({ y: r.y, c: cum(r.cells) }));
-  const now = current ? cum(current.cells) : [];
-  const lastI = now.reduce((a, v, i) => (v !== null ? i : a), -1);
-  $('ytdYear').textContent = current ? current.y : '';
-  legend('ytdLegend', [[C_MED, 'Median of ' + (past.length ? `${past[0].y}–${past[past.length - 1].y}` : 'past years')], [C_NOW, String(current ? current.y : '')]]);
-  for (const [c, t] of [[C_BAND, 'Usual range (middle half)'], [C_BAND_WIDE, 'Lowest to highest year']]) {
-    const sp = el('span', { className: 'band', textContent: t }); sp.style.setProperty('--c', c); $('ytdLegend').append(sp);
-  }
-  if (past.length < 3 || lastI < 0) {
-    svg.textContent = '';
-    $('ytdNote').textContent = 'Needs at least three complete earlier years in the selected range.';
-    return;
-  }
-  const q = (i, p) => quantile(past.map(d => d.c[i]).sort((a, b) => a - b), p);
-  const med = MONTHS.map((_, i) => q(i, 0.5)), p25 = MONTHS.map((_, i) => q(i, 0.25)), p75 = MONTHS.map((_, i) => q(i, 0.75));
-  const lo = MONTHS.map((_, i) => q(i, 0)), hi = MONTHS.map((_, i) => q(i, 1));
-  const top = niceMax(Math.max(hi[11], ...now.map(v => v || 0), 1));
-  const y = axes(svg, W, H, pad, top);
-  const step = (W - pad.l - pad.r) / 11, x = i => pad.l + i * step;
-  const area = (a, b, op) => svg.append(svgEl('path', { d: a.map((v, i) => `${i ? 'L' : 'M'}${x(i)},${y(v)}`).join('') +
-    b.map((v, i) => `L${x(11 - i)},${y(b[11 - i])}`).join('') + 'Z', fill: op }));
-  area(hi, lo, C_BAND_WIDE);
-  area(p75, p25, C_BAND);
-  const line = (vals, color) => svg.append(svgEl('path', { d: vals.map((v, i) => (v === null ? '' : `${i && vals[i - 1] !== null ? 'L' : 'M'}${x(i)},${y(v)}`)).join(''),
-    fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-linejoin': 'round' }));
-  line(med, C_MED);
-  line(now, C_NOW);
-  now.forEach((v, i) => { if (v !== null) svg.append(svgEl('circle', { cx: x(i), cy: y(v), r: i === lastI ? 5 : 3.5, fill: C_NOW, stroke: '#1a1a19', 'stroke-width': 2 })); });
-  let yMed = y(med[11]) + 4, yNow = y(now[lastI]) + 4;
-  if (lastI === 11 && Math.abs(yMed - yNow) < 13) { yNow < yMed ? (yMed = yNow + 13) : (yNow = yMed + 13); }
-  label(svg, x(11) + 8, yMed, 'Median', 'start', '#c3c2b7');
-  label(svg, x(lastI) + 8, yNow, current.y, 'start', '#c3c2b7');
-  MONTHS.forEach((mn, i) => {
-    label(svg, x(i), H - 8, mn);
-    const g = svgEl('g', { class: 'hit' });
-    g.dataset.tip = `Total by end of ${MONTHS_LONG[i]}\n${current.y}: ${now[i] === null ? 'not yet' : nf(now[i])}\nMedian: ${nf(med[i])}\n` +
-      `Middle half of years: ${nf(p25[i])} – ${nf(p75[i])}\nLowest – highest: ${nf(lo[i])} – ${nf(hi[i])}`;
-    g.append(svgEl('line', { class: 'cross', x1: x(i), x2: x(i), y1: pad.t, y2: H - pad.b, stroke: '#898781', opacity: 0 }));
-    g.append(svgEl('rect', { x: x(i) - step / 2, y: pad.t, width: step, height: H - pad.t - pad.b, fill: 'transparent' }));
-    svg.append(g);
-  });
-  // Where the newest year stands at its latest complete month.
-  const v = now[lastI], rank = 1 + past.filter(d => d.c[lastI] > v).length, n = past.length + 1;
-  const diff = med[lastI] > 0 ? ` (${pct((v - med[lastI]) / med[lastI] * 100)} against the median)` : '';
-  const ord = k => k + (k % 100 >= 11 && k % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][k % 10] || 'th');
-  $('ytdNote').textContent = `By the end of ${MONTHS_LONG[lastI]} ${current.y}: ${nf(v)} ${unit}${diff}. ` +
-    (rank === 1 ? `The highest of ${n} years at this point.` : rank === n ? `The lowest of ${n} years at this point.` : `${ord(rank)} highest of ${n} years at this point.`);
-  svg.setAttribute('aria-label', `Running total of ${unit} through the year, ${current.y} against earlier years`);
-}
-
 // One shared tooltip for table cells and chart marks.
 const tip = $('tip');
 document.addEventListener('mousemove', e => {
@@ -1241,10 +1137,189 @@ document.addEventListener('mousemove', e => {
 });
 
 /* ================= 7. Downloads ================= */
-function download(blob, name) {
-  const a = el('a', { href: URL.createObjectURL(blob), download: name });
+// Saving files. Where the browser offers it (Chrome, Edge, the Claude app), a "Save as"
+// window opens first, while the click still counts as the user's action, and the file is
+// then written straight to disk piece by piece. Otherwise (Safari, Firefox) the classic
+// download link is used. produce(write) calls write(text or Blob) as many times as needed.
+const MAX_POINTS = 3000000;
+// CSV in the standard international (English) format: ',' between columns, '.' in decimals.
+// The file starts with a byte-order mark so Excel reads it as UTF-8.
+const CSV = { sep: ',', num: v => String(v), bom: '\uFEFF' };
+const csvLine = cells => cells.join(CSV.sep);
+const fileTypes = { csv: ['CSV file', 'text/csv'], png: ['PNG image', 'image/png'],
+  xlsx: ['Excel workbook', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] };
+const MAX_XLSX_ROWS = 1048575;          // Excel's limit is 1,048,576 rows, header included
+
+/* ----- Excel (.xlsx) writer -----
+   An .xlsx file is a zip archive of a few XML files. This builds it directly in the browser,
+   so Excel opens it with numbers in their own columns whatever the computer's language. */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+  return t;
+})();
+const xmlEsc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const EXCEL_EPOCH = Date.UTC(1899, 11, 30);
+class XlsxSheet {
+  constructor(name, widths) { this.name = name; this.widths = widths; this.parts = []; this.buf = []; this.rows = 0; this.enc = new TextEncoder(); }
+  // Cell values: numbers stay numbers, { date: 'YYYY-MM-DD' } becomes an Excel date, the rest is text.
+  cell(v) {
+    if (typeof v === 'number' && Number.isFinite(v)) return `<c><v>${v}</v></c>`;
+    if (v && v.date) { const [y, m, d] = v.date.split('-').map(Number); return `<c s="1"><v>${(Date.UTC(y, m - 1, d) - EXCEL_EPOCH) / 864e5}</v></c>`; }
+    return `<c t="inlineStr"><is><t>${xmlEsc(v)}</t></is></c>`;
+  }
+  header(cols) { this.buf.push(`<row r="1">${cols.map(c => `<c s="2" t="inlineStr"><is><t>${xmlEsc(c)}</t></is></c>`).join('')}</row>`); this.rows = 1; }
+  add(rows) {
+    for (const r of rows) this.buf.push(`<row r="${++this.rows}">${r.map(v => this.cell(v)).join('')}</row>`);
+    if (this.buf.length > 5000) this.flush();
+  }
+  flush() { if (this.buf.length) { this.parts.push(this.enc.encode(this.buf.join(''))); this.buf = []; } }
+  xml() {
+    this.flush();
+    const cols = this.widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('');
+    const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      (this.rows > 1 ? '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' : '<sheetViews><sheetView workbookViewId="0"/></sheetViews>') +
+      `<cols>${cols}</cols><sheetData>`;
+    return [this.enc.encode(head), ...this.parts, this.enc.encode('</sheetData></worksheet>')];
+  }
+}
+async function zipEntry(name, chunks) {
+  let crc = 0xFFFFFFFF, size = 0;
+  for (const c of chunks) { for (let i = 0; i < c.length; i++) crc = CRC_TABLE[(crc ^ c[i]) & 255] ^ (crc >>> 8); size += c.length; }
+  crc = (crc ^ 0xFFFFFFFF) >>> 0;
+  let data = new Blob(chunks), method = 0;
+  if (typeof CompressionStream !== 'undefined') {
+    data = await new Response(data.stream().pipeThrough(new CompressionStream('deflate-raw'))).blob();
+    method = 8;
+  }
+  return { name: new TextEncoder().encode(name), crc, size, csize: data.size, method, data };
+}
+async function buildXlsx(sheets) {
+  const enc = s => [new TextEncoder().encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' + s)];
+  const NS = 'http://schemas.openxmlformats.org', REL = NS + '/officeDocument/2006/relationships';
+  const files = [
+    ['[Content_Types].xml', enc(`<Types xmlns="${NS}/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>` +
+      sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('') + '</Types>')],
+    ['_rels/.rels', enc(`<Relationships xmlns="${NS}/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`)],
+    ['xl/workbook.xml', enc(`<workbook xmlns="${NS}/spreadsheetml/2006/main" xmlns:r="${REL}"><sheets>` +
+      sheets.map((sh, i) => `<sheet name="${xmlEsc(sh.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('') + '</sheets></workbook>')],
+    ['xl/_rels/workbook.xml.rels', enc(`<Relationships xmlns="${NS}/package/2006/relationships">` +
+      sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="${REL}/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('') +
+      `<Relationship Id="rId${sheets.length + 1}" Type="${REL}/styles" Target="styles.xml"/></Relationships>`)],
+    ['xl/styles.xml', enc(`<styleSheet xmlns="${NS}/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>` +
+      '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+      '<xf numFmtId="14" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs>' +
+      '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>')],
+    ...sheets.map((sh, i) => [`xl/worksheets/sheet${i + 1}.xml`, sh.xml()])
+  ];
+  const entries = [];
+  for (const [name, chunks] of files) entries.push(await zipEntry(name, chunks));
+  // Zip layout: [local header + data] for each file, then the central directory, then its end record.
+  const out = [], central = [];
+  let offset = 0;
+  const hdr = (len, fill) => { const b = new DataView(new ArrayBuffer(len)); fill(b); return new Uint8Array(b.buffer); };
+  for (const e of entries) {
+    const local = hdr(30, b => {
+      b.setUint32(0, 0x04034b50, true); b.setUint16(4, 20, true); b.setUint16(8, e.method, true);
+      b.setUint16(12, 0x21, true); b.setUint32(14, e.crc, true); b.setUint32(18, e.csize, true); b.setUint32(22, e.size, true);
+      b.setUint16(26, e.name.length, true);
+    });
+    central.push(hdr(46, b => {
+      b.setUint32(0, 0x02014b50, true); b.setUint16(4, 20, true); b.setUint16(6, 20, true); b.setUint16(10, e.method, true);
+      b.setUint16(14, 0x21, true); b.setUint32(16, e.crc, true); b.setUint32(20, e.csize, true); b.setUint32(24, e.size, true);
+      b.setUint16(28, e.name.length, true); b.setUint32(42, offset, true);
+    }), e.name);
+    out.push(local, e.name, e.data);
+    offset += 30 + e.name.length + e.csize;
+  }
+  const cdSize = central.reduce((a, c) => a + c.length, 0);
+  out.push(...central, hdr(22, b => {
+    b.setUint32(0, 0x06054b50, true); b.setUint16(8, entries.length, true); b.setUint16(10, entries.length, true);
+    b.setUint32(12, cdSize, true); b.setUint32(16, offset, true);
+  }));
+  return new Blob(out, { type: fileTypes.xlsx[1] });
+}
+
+// A table goes to either format through the same three calls: begin(columns), rows(list), end().
+function tableSink(fmt, write, sheetName, widths, about) {
+  if (fmt === 'csv') {
+    const pending = [];
+    return {
+      begin: cols => pending.push(write(CSV.bom + csvLine(cols) + '\r\n')),
+      rows: rows => { if (rows.length) pending.push(write(rows.map(r => csvLine(r.map(v => (v && v.date ? v.date : v)))).join('\r\n') + '\r\n')); },
+      end: () => Promise.all(pending)
+    };
+  }
+  const sheet = new XlsxSheet(sheetName, widths);
+  return {
+    begin: cols => sheet.header(cols),
+    rows: rows => sheet.add(rows),
+    end: async () => {
+      const info = new XlsxSheet('About', [28, 90]);
+      info.add(about);
+      await write(await buildXlsx([sheet, info]));
+    }
+  };
+}
+// What the file contains, written on the "About" sheet of the Excel workbook.
+function aboutRows() {
+  const s = state.sel, ix = data.index;
+  return [
+    ['Area', s.country ? s.country : `${s.south.toFixed(4)} to ${s.north.toFixed(4)} latitude, ${s.west.toFixed(4)} to ${s.east.toFixed(4)} longitude`],
+    ['Area size (km²)', Math.round(s.areaM2 / 1e6)],
+    ['Dates', rangeLabel()],
+    ['Counts', 'Harmonized = VIIRS-equivalent hotspots: before Feb 2012, MODIS counts scaled by the local VIIRS/MODIS ratio; from Feb 2012, VIIRS counts.'],
+    ['Source', `NASA FIRMS (MODIS Collection 6.1, VIIRS S-NPP 375 m), ${ix.firstDate} to ${ix.lastDate}`],
+    ['Made with', `Fire Globe, ${location.origin}`],
+    ['Downloaded', new Date().toISOString().slice(0, 10)]
+  ];
+}
+// Browsers built into other apps (such as the Claude app's preview pane) cannot save files.
+const EMBEDDED = /\bClaude\//.test(navigator.userAgent);
+async function saveFile(name, produce) {
+  const ext = name.split('.').pop(), [desc, mime] = fileTypes[ext];
+  if (window.showSaveFilePicker) {
+    let handle = null;
+    const asked = performance.now();
+    try {
+      handle = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: desc, accept: { [mime]: ['.' + ext] } }] });
+    } catch (e) {
+      // A real Cancel takes a person at least a moment; an instant refusal means this browser
+      // does not offer the window, so fall back to the classic download below.
+      if (e.name === 'AbortError' && performance.now() - asked > 400) return false;
+    }
+    if (handle) {
+      const out = await handle.createWritable();
+      try { await produce(part => out.write(part)); await out.close(); }
+      catch (e) { await out.abort(); throw e; }
+      return true;
+    }
+  }
+  const parts = [];
+  await produce(part => { parts.push(part); });
+  const a = el('a', { href: URL.createObjectURL(new Blob(parts, { type: mime })), download: name });
   document.body.append(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  return true;
+}
+// Run a download button: show progress, report failures instead of failing silently.
+async function runDownload(btn, name, produce) {
+  if (EMBEDDED) {
+    $('dlNote').textContent = `This built-in browser cannot save files. Open ${location.origin} in Chrome, Safari or Firefox to download.`;
+    return;
+  }
+  const label = btn.textContent;
+  btn.disabled = true;
+  try {
+    const saved = await saveFile(name, produce);
+    if (saved) $('dlNote').textContent = `Saved ${name}.`;
+  } catch (e) {
+    $('dlNote').textContent = `Could not save ${name}: ${e.message}`;
+  } finally {
+    btn.textContent = label;
+    btn.disabled = btn === $('dlPoints') && (state.rawPoints > (state.fmt === 'xlsx' ? MAX_XLSX_ROWS : MAX_POINTS) || !state.rawPoints);
+  }
 }
 const fileStem = () => {
   const s = state.sel, f = v => v.toFixed(3);
@@ -1253,23 +1328,26 @@ const fileStem = () => {
   return `fire_${where}_${fullYears() ? `${state.y0}-${state.y1}` : `${ym(state.m0)}_to_${ym(state.m1)}`}`;
 };
 
-$('dlTable').onclick = () => {
+$('dlTable').onclick = () => runDownload($('dlTable'), `${fileStem()}_monthly.${state.fmt}`, async write => {
   const r = state.result, md = state.model;
-  const lines = ['year,month,modis_raw,viirs_raw,harmonized_viirs_equivalent,source,complete_month'];
+  const out = tableSink(state.fmt, write, 'Monthly', [8, 8, 12, 12, 30, 15, 16], aboutRows());
+  out.begin(['year', 'month', 'modis_raw', 'viirs_raw', 'harmonized_viirs_equivalent', 'source', 'complete_month']);
+  const rows = [];
   for (const row of md.rows) for (const c of row.cells) if (c.exists) {
-    lines.push([row.y, c.m % 12 + 1, r.modis[c.m], r.viirs[c.m], r.harm[c.m].toFixed(1),
-      inViirsEra(c.m) ? 'VIIRS' : 'MODIS scaled', c.partial ? 'no' : 'yes'].join(','));
+    rows.push([row.y, c.m % 12 + 1, r.modis[c.m], r.viirs[c.m], +r.harm[c.m].toFixed(1),
+      inViirsEra(c.m) ? 'VIIRS' : 'MODIS scaled', c.partial ? 'no' : 'yes']);
   }
-  download(new Blob([lines.join('\n') + '\n'], { type: 'text/csv' }), fileStem() + '_monthly.csv');
-};
+  out.rows(rows);
+  await out.end();
+});
 
-$('dlPoints').onclick = async () => {
-  const btn = $('dlPoints'), label = btn.textContent, ix = data.index;
-  btn.disabled = true;
-  try {
+$('dlPoints').onclick = () => runDownload($('dlPoints'), `${fileStem()}_hotspots.${state.fmt}`, async write => {
+  const btn = $('dlPoints'), ix = data.index;
+  {
     const m0 = state.m0, m1 = state.m1;
     const SAT = ['Terra', 'Aqua', 'Suomi NPP'], CONF = ['low', 'nominal', 'high'];
-    const parts = ['latitude,longitude,acq_date,satellite,instrument,confidence,frp,daynight,type,harmonized_weight\n'];
+    const out = tableSink(state.fmt, write, 'Hotspots', [11, 11, 12, 11, 11, 11, 9, 9, 6, 18], aboutRows());
+    out.begin(['latitude', 'longitude', 'acq_date', 'satellite', 'instrument', 'confidence', 'frp', 'daynight', 'type', 'harmonized_weight']);
     await walk(state.sel, true, {
       points(t, dv, n, keep) {
         const rows = [];
@@ -1281,20 +1359,21 @@ $('dlPoints').onclick = async () => {
           const fl = dv.getUint8(o + 8), sat = fl & 3, viirs = sat === 2, era = inViirsEra(m);
           // Weight = this detection's contribution to the harmonized count.
           const weight = viirs ? (era ? 1 : 0) : era ? 0 : +(m < ix.aquaStart ? t.rT : t.rM)[m % 12].toFixed(4);
-          rows.push([(t.la + la / 65535).toFixed(5), (t.lo + lo / 65535).toFixed(5),
-            new Date(Date.UTC(2000, 0, 1 + day)).toISOString().slice(0, 10),
-            SAT[sat], viirs ? 'VIIRS' : 'MODIS', CONF[fl >> 5 & 3], dv.getUint16(o + 6, true) / 10, fl & 4 ? 'N' : 'D', fl >> 3 & 3, weight].join(','));
+          rows.push([+(t.la + la / 65535).toFixed(5), +(t.lo + lo / 65535).toFixed(5),
+            { date: new Date(Date.UTC(2000, 0, 1 + day)).toISOString().slice(0, 10) },
+            SAT[sat], viirs ? 'VIIRS' : 'MODIS', CONF[fl >> 5 & 3], dv.getUint16(o + 6, true) / 10, fl & 4 ? 'N' : 'D', fl >> 3 & 3, weight]);
         }
-        if (rows.length) parts.push(rows.join('\n') + '\n');
+        out.rows(rows);
       }
-    }, (d, n) => { btn.textContent = `Preparing… ${d}/${n}`; });
-    download(new Blob(parts, { type: 'text/csv' }), fileStem() + '_hotspots.csv');
-  } finally { btn.textContent = label; btn.disabled = state.rawPoints > 500000; }
-};
+    }, (d, n) => { btn.textContent = `Preparing… ${Math.round(d / n * 100)}%`; });
+    btn.textContent = 'Saving…';
+    await out.end();
+  }
+});
 
-$('dlPng').onclick = async () => {
+$('dlPng').onclick = () => runDownload($('dlPng'), fileStem() + (state.view === 'anom' ? '_anomaly' : '_calendar') + '.png', async write => {
   const md = state.model, sel = state.sel, S = 2, W = 1200, rowH = 24, x0 = 70, cw = 78;
-  const calH = (md.rows.length + 2) * rowH, chartH = 1080;
+  const calH = (md.rows.length + 2) * rowH, chartH = 780;
   const cv = el('canvas', { width: W * S, height: (120 + calH + chartH) * S }), c = cv.getContext('2d');
   c.scale(S, S);
   c.fillStyle = '#12151c'; c.fillRect(0, 0, W, cv.height / S);
@@ -1333,14 +1412,10 @@ $('dlPng').onclick = async () => {
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(s));
   });
   text('Fire season: typical year (orange), usual range (grey), ' + $('seasonYear').textContent + ' (yellow)', 24, y + 14, '#c3c2b7', 13);
-  text('Naive sum (grey) against harmonized (red), per year', 624, y + 14, '#c3c2b7', 13);
+  text('Unusual years: difference from the average', 616, y + 14, '#c3c2b7', 13);
   await drawSvg('seasonChart', 24, y + 26, 560, 220);
-  await drawSvg('compareChart', 616, y + 26, 560, 220);
+  await drawSvg('anomChart', 616, y + 26, 560, 220);
   text('Monthly record, harmonized (colour = number of hotspots)', 24, y + 280, '#c3c2b7', 13);
   await drawSvg('monthlyChart', 24, y + 292, 1152, 452);
-  text('Year to date', 24, y + 776, '#c3c2b7', 13);
-  text('Yearly anomaly against the average', 616, y + 776, '#c3c2b7', 13);
-  await drawSvg('ytdChart', 24, y + 788, 560, 220);
-  await drawSvg('anomChart', 616, y + 788, 560, 220);
-  cv.toBlob(b => download(b, fileStem() + (anom ? '_anomaly' : '_calendar') + '.png'), 'image/png');
-};
+  await write(await new Promise(res => cv.toBlob(res, 'image/png')));
+});

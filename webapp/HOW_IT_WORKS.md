@@ -152,11 +152,9 @@ outlined in the table, left out of the medians, and left out of the harmonizatio
 | Chart | Question it answers |
 |---|---|
 | Calendar table (red → yellow) | When and where has burning happened, month by month? |
-| Sensors added up against harmonized | Does the harmonization remove the 2012 sensor jump? Which years burned most? |
 | Unusual years | How far above or below the multi-year average was each year? |
 | Monthly record | Every month in one line: biggest fire months, long-term change |
 | Fire season + critical period | Which months see most fires? The shaded critical period is the shortest run of consecutive months holding at least 80% of a typical year's hotspots (it may run over New Year). |
-| Year to date | Is this year ahead of or behind a normal year so far? |
 
 ## Current limits
 - Data loaded: **Argentina only**, to mid-November 2026. A selection that spills into a

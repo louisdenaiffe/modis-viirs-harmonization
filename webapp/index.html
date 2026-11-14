@@ -232,15 +232,6 @@
       </section>
 
       <section>
-        <h2>Sensors added up against harmonized, per year</h2>
-        <div class="card">
-          <div class="legend" id="compareLegend"></div>
-          <svg id="compareChart" viewBox="0 0 560 220" role="img" aria-label="Naive sum of MODIS and VIIRS against the harmonized record, per year"></svg>
-        </div>
-        <div class="note" id="compareNote"></div>
-      </section>
-
-      <section>
         <h2>Unusual years: difference from the average</h2>
         <div class="card">
           <div class="legend" id="anomLegend"></div>
@@ -268,19 +259,13 @@
       </section>
 
       <section>
-        <h2>Year to date: <span id="ytdYear"></span> against earlier years</h2>
-        <div class="card">
-          <div class="legend" id="ytdLegend"></div>
-          <svg id="ytdChart" viewBox="0 0 560 220" role="img" aria-label="Running total through the year"></svg>
-        </div>
-        <div class="note" id="ytdNote"></div>
-      </section>
-
-      <section>
         <h2>Download</h2>
         <div class="downloads">
-          <button id="dlTable">Monthly table (CSV)</button>
-          <button id="dlPoints">Hotspots in this search (CSV)</button>
+          <span class="seg" id="fmtSeg" role="group" aria-label="File format for tables">
+            <button data-v="xlsx" class="on">Excel</button><button data-v="csv">CSV</button>
+          </span>
+          <button id="dlTable">Monthly table</button>
+          <button id="dlPoints">Hotspots in this search</button>
           <button id="dlPng">Calendar and charts (PNG)</button>
         </div>
         <div class="note" id="dlNote"></div>
