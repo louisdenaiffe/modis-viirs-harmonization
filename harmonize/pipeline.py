@@ -60,14 +60,7 @@ def choose_recommendation(calib_rec: dict, val: dict) -> dict:
                            for m, mo in zip(tied["metric"], tied["model"])]
         return tied.sort_values(["lyo_p90", "p90_abs_bias_pct"], na_position="last").iloc[0], tied, best_p90
 
-    # per metric: same rule, every model except the pairs that failed the long-gap back-cast test
-    by_metric = {}
-    for m, g in s.groupby("metric", sort=False):
-        g = g[[(m, mo) not in calibrate.PER_METRIC_EXCLUDED for mo in g["model"]]]
-        if len(g):
-            b = pick(g)[0]
-            by_metric[m] = {"model": b["model"], "p90_abs_bias_pct": float(b["p90_abs_bias_pct"]),
-                            "lyo_p90_abs_bias_pct": float(b["lyo_p90"])}
+    by_metric = _by_metric(val.get("domain_scores"))
     s = s[~s["model"].isin(calibrate.OVERALL_PICK_EXCLUDED)]
     if s.empty:
         return calib_rec
@@ -82,6 +75,42 @@ def choose_recommendation(calib_rec: dict, val: dict) -> dict:
            "excluded_from_overall_pick": list(calibrate.OVERALL_PICK_EXCLUDED),
            "calibration_module_pick": {k: calib_rec.get(k) for k in ("metric", "model", "reason")}}
     return json.loads(json.dumps(rec, default=str))
+
+
+BY_METRIC_MIN_DETECTIONS = 10_000
+
+
+def _by_metric(ds) -> dict:
+    """Best model per metric on country-years with >= 10 000 VIIRS detections (Terra + Aqua,
+    day + night): lowest p90 |annual bias| on unseen domains; candidates within 1 point are
+    separated by leave-year-out. Unlike the overall pick, this uses the size filter, because
+    the unfiltered p90 is set by territories with a few dozen detections (METHOD.md §6.3).
+    Pairs in ``calibrate.PER_METRIC_EXCLUDED`` are skipped."""
+    if ds is None or len(ds) == 0:
+        return {}
+    d = ds[(ds["modis_source"] == "MODIS_ALL") & (ds["daynight"] == "ALL")]
+    size = d[(d["metric"] == "n_hotspots") & (d["model"] == "raw_modis")][["scheme", "domain", "year", "obs_total"]]
+    d = d.merge(size.rename(columns={"obs_total": "_n"}), on=["scheme", "domain", "year"], how="left")
+    d = d[(d["_n"] >= BY_METRIC_MIN_DETECTIONS) & (d["model"] != "raw_modis")]
+    if d.empty:
+        return {}
+    p90 = d.assign(a=d["bias_pct"].abs()).dropna(subset=["a"]).groupby(["scheme", "metric", "model"])["a"] \
+        .quantile(0.9).reset_index()
+    prim = next((sc for sc in ("leave_domain_out", "domain_kfold", "spatial_block") if (p90["scheme"] == sc).any()), None)
+    if prim is None:
+        return {}
+    ly = p90[p90["scheme"] == "leave_year_out"].set_index(["metric", "model"])["a"]
+    out = {}
+    for m, g in p90[p90["scheme"] == prim].groupby("metric", sort=False):
+        g = g[[(m, mo) not in calibrate.PER_METRIC_EXCLUDED for mo in g["model"]]].copy()
+        if g.empty:
+            continue
+        g = g[g["a"] <= g["a"].min() + 1.0]
+        g["ly"] = [ly.get((m, mo), float("nan")) for mo in g["model"]]
+        b = g.sort_values(["ly", "a"], na_position="last").iloc[0]
+        out[m] = {"model": b["model"], "p90_abs_bias_pct_ge10k": round(float(b["a"]), 2),
+                  "lyo_p90_abs_bias_pct_ge10k": round(float(b["ly"]), 2)}
+    return out
 
 
 def _plain(df: pd.DataFrame) -> pd.DataFrame:

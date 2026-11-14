@@ -110,6 +110,20 @@ capped at the number of days in the period.
 | `ratio_regional` | nested tiles of 40/20/10/5°, each tile's k shrunk toward its parent by empirical Bayes: k_t = (V_t + λ·k_parent)/(M_t + λ), with λ per level from an internal spatial CV | falling back to the parent tile, then to global |
 | `glm_features` | log k = b0 + β·z, a Poisson GLM fitted on 5° × month units. z holds five MODIS-observable features: log density of the metric in the cell, log hotspots per fire-day, log `frp_mean`, `scan_mean` (view angle) and Terra share. \|lat\| and a hemisphere-aware season are implemented but switched off, because they made transfer to unseen countries worse (cell-days p90 0.19 → 0.23) | features: no lookup table |
 | `glm_regional` | `glm_features` × a shrunken regional residual | features plus the parent-tile residual |
+| `glm_cell` (added after the full recalibration) | `glm_regional` × one shrunk factor per 0.25° cell × a rescale per 5° tile that restores the training total | an unseen cell gets factor 1, so it falls back to `glm_regional` |
+
+**`glm_cell` in short** (details and all tests in `IMPROVE.md`; scores are in the same
+`outputs_full/validation` and `crosstest` tables as the other models). p90 |annual bias|,
+≥ 10 k country-years, Terra + Aqua, day + night, `glm_regional` → `glm_cell`:
+- unseen years: hotspots 20.6 → 15.2, FRP 17.5 → 14.2, cell-days 14.4 → 11.5;
+- unseen countries (K-fold): hotspots 29.3 → 27.8, FRP 24.0 → 21.6, cell-days 23.1 → 21.5;
+- cross-test pooled: hotspots 30.9 → 31.2, FRP 23.7 → 20.7, cell-days 24.4 → 24.9.
+
+It is the recommended model for **hotspots and FRP** (`recommended.by_metric` in the
+coefficients JSON). The overall recommendation stays **cell-days / `glm_regional`**: fitted on
+late years and scored on earlier ones (the back-cast direction), `glm_cell` does not beat
+`glm_regional` on cell-days (10.7-11.9 vs 11.1-15.1), so it is excluded from the overall pick.
+The harmonized outputs and the back-cast are therefore unchanged.
 
 All models fit totals on aggregated units. The VIIRS mass seen in cells where MODIS saw
 nothing is folded into the MODIS-positive cells. Without that, a back-cast would lose it:

@@ -77,7 +77,7 @@ def merge(work: Path, of: Path):
     add = json.loads((work / "coef_glm_cell.json").read_text())
     coef["coefficients"] = [c for c in coef["coefficients"] if c["model"] != M] + add
     old_rec = coef["recommended"]
-    rec = choose_recommendation(old_rec.get("calibration_module_pick", old_rec), {"summary": summary, "scores": sc})
+    rec = choose_recommendation(old_rec.get("calibration_module_pick", old_rec), {"summary": summary, "scores": sc, "domain_scores": ds})
     coef["recommended"] = rec
     cj.write_text(json.dumps(coef, indent=2, default=str))
     print("recommended:", rec["metric"], rec["model"], "(was", old_rec["metric"], old_rec["model"] + ")")

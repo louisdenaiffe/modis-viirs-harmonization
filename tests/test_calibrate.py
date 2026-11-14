@@ -285,5 +285,14 @@ def test_glm_cell_not_eligible_for_overall_pick():
         dict(metric="n_hotspots", model="glm_regional", p90_abs_bias_pct=25.0, **keys)])
     rec = choose_recommendation({"metric": "x", "model": "y", "reason": ""}, {"summary": summary, "scores": None})
     assert (rec["metric"], rec["model"]) == ("fire_cell_days", "glm_regional")
+    rows = []
+    for metric, model, bias in (("n_hotspots", "raw_modis", -60.0), ("n_hotspots", "glm_cell", 5.0),
+                                ("n_hotspots", "glm_regional", 15.0), ("fire_cell_days", "glm_cell", 4.0),
+                                ("fire_cell_days", "glm_regional", 9.0)):
+        for year in (2019, 2020):
+            rows.append(dict(scheme="leave_domain_out", metric=metric, model=model, modis_source="MODIS_ALL",
+                             daynight="ALL", domain="X", year=year, obs_total=50_000.0, bias_pct=bias))
+    rec = choose_recommendation({"metric": "x", "model": "y", "reason": ""},
+                                {"summary": summary, "scores": None, "domain_scores": pd.DataFrame(rows)})
     assert rec["by_metric"]["n_hotspots"]["model"] == "glm_cell"
-    assert rec["by_metric"]["fire_cell_days"]["model"] == "glm_regional"
+    assert rec["by_metric"]["fire_cell_days"]["model"] == "glm_regional"     # excluded pair
