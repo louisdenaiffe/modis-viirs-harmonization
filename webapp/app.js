@@ -6,8 +6,9 @@ const EARTH_R = 6371008.8;              // mean Earth radius, metres
 const MIN_SIDE_M = 375;                 // one VIIRS pixel: smallest allowed selection side
 const DEG = Math.PI / 180;
 // Play / Pause icons for the fire-map button (drawn, so they match across systems).
-const ICON_PLAY = '<span class="ico"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1v8l7-4z" fill="currentColor"/></svg></span>';
-const ICON_PAUSE = '<span class="ico"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1h2.2v8H2zM5.8 1H8v8H5.8z" fill="currentColor"/></svg></span>';
+// The triangle sits a little right of centre, so it looks centred in the round button.
+const ICON_PLAY = '<span class="ico"><svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true"><path d="M4 1.8v11.4c0 .6.6.9 1.1.6l8.6-5.7c.4-.3.4-.9 0-1.2L5.1 1.2C4.6.9 4 1.2 4 1.8z" fill="currentColor"/></svg></span>';
+const ICON_PAUSE = '<span class="ico"><svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true"><rect x="3" y="2" width="3.4" height="11" rx="1" fill="currentColor"/><rect x="8.6" y="2" width="3.4" height="11" rx="1" fill="currentColor"/></svg></span>';
 const M_PER_DEG_LAT = EARTH_R * DEG;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
@@ -451,10 +452,10 @@ let lastTouch = -Infinity, flying = false, lastFrame = performance.now();
 for (const ev of ['mousedown', 'wheel', 'touchstart', 'keydown'])
   addEventListener(ev, () => { lastTouch = performance.now(); }, { passive: true, capture: true });
 map.on('moveend', () => { flying = false; });
-// The credits are long: on narrower screens they start folded behind the (i) button, so they do
-// not run under the fire-map bar.
+// The credits are long: they start folded behind the (i) button, so they never run under the
+// fire-map bar.
 map.once('load', () => {
-  if (innerWidth < 1200) document.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show');
+  document.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show');
 });
 // Ticking Auto-rotate starts the spin at once, even with something selected (zoomed in, it
 // first zooms out). The 6-second pause only applies to later touches of the globe.
@@ -932,7 +933,7 @@ async function showHeat() {
     try { feats = await heatFeatures(m, blocks); } catch { feats = []; }
     if (token !== heat.token) return;
     const total = data.blockList.reduce((a, b) => a + b.harm[m], 0) * (state.unit === 'mEq' ? worldFactors()[moy] : 1);
-    note = Math.round(total).toLocaleString('en-US') + ' ' + UNITS[state.unit].long;
+    note = total;
     const p = blocks ? HEAT_PAINT.detail : HEAT_PAINT.world;
     // Strength relative to the busiest places this month (99th percentile), square-rooted so
     // medium activity still shows: quiet areas glow dark red, the busiest ones yellow.
@@ -948,8 +949,48 @@ async function showHeat() {
   map.getSource('heat').setData({ type: 'FeatureCollection', features: feats });
   // The running month is marked next to its name, where it cannot be cut off.
   $('heatWhen').textContent = `${MONTHS_LONG[moy]} ${year}` + (hasData && m === ix.partialMonth ? ', so far' : '');
-  $('heatCaption').textContent = on ? note : 'Fire map hidden';
+  heat.total = hasData ? note : null;
+  updateMapArea();
 }
+/* ----- Showing one month of the record on the map (a click on the table or the monthly chart) ----- */
+function mapMonth() { return (+$('heatYear').value - 2000) * 12 + +$('heatMonth').value; }
+// Where a month's number comes from, in the chosen units.
+function sourceOf(m) {
+  const viirs = inViirsEra(m);
+  return state.unit === 'vEq' ? (viirs ? 'VIIRS data' : 'MODIS data converted to VIIRS')
+    : (viirs ? 'VIIRS data converted to MODIS' : 'MODIS data');
+}
+function showMonthOnMap(m) {
+  if (play.on) stopPlay();
+  $('heatChk').checked = true;
+  $('heatYear').value = 2000 + Math.floor(m / 12);
+  $('heatMonth').value = m % 12;
+  if (phone()) openPanel(false);                     // phone: show the globe and the bar with the numbers
+  showHeat();
+}
+// Under the world total: the selected area's own number for the month on the map, and its source.
+// Two lines under the month: the numbers (selected area first, then the world), then the units
+// and, for a selection, where that month's number comes from.
+function updateMapArea() {
+  const m = mapMonth(), r = state.result, cap = $('heatCaption'), sub = $('heatArea');
+  const on = $('heatChk').checked, total = heat.total;
+  const area = on && total != null && r && state.sel;
+  cap.textContent = !on ? 'Fire map hidden' : total == null ? 'No satellite data'
+    : (area ? `${state.sel.country || 'Selected area'} ${nf(r[state.unit][m])} · ` : '') + `World ${nf(Math.round(total))}`;
+  sub.hidden = !on || total == null;
+  sub.textContent = UNITS[state.unit].long + (area ? ' · ' + sourceOf(m) : '');
+  markMapMonth();
+}
+// The table cell of the month on the map is outlined, whichever way the month was chosen.
+function markMapMonth() {
+  const m = String(mapMonth());
+  for (const td of document.querySelectorAll('#cal td.c')) td.classList.toggle('now', td.dataset.m === m);
+}
+$('cal').addEventListener('click', e => {
+  const td = e.target.closest('td.c');
+  if (td) showMonthOnMap(+td.dataset.m);
+});
+
 /* ----- Play: the world's fire map month by month, from the first to the last month ----- */
 // About 6 months per second: the whole record (Nov 2000 to today) plays in under a minute.
 const play = { on: false, timer: 0, scale: null, speed: 2 };
@@ -1117,6 +1158,7 @@ window.addEventListener('aoi-selected', async e => {
   const sel = state.sel = e.detail, token = ++state.token;
   state.result = null;
   $('results').hidden = true;
+  updateMapArea();
   if (!sel) { openPanel(false); return; }
   $('bN').value = sel.north.toFixed(4); $('bS').value = sel.south.toFixed(4);
   $('bW').value = sel.west.toFixed(4); $('bE').value = sel.east.toFixed(4);
@@ -1142,6 +1184,7 @@ window.addEventListener('aoi-selected', async e => {
     setStatus('');
     $('results').hidden = false;
     render();
+    updateMapArea();
   } catch (err) {
     if (token === state.token) setStatus('Something went wrong while reading the data: ' + err.message);
   }
@@ -1282,7 +1325,8 @@ function render() {
     const tr = el('tr', {}, el('td', { className: 'y', textContent: r.y }));
     r.cells.forEach((c, moy) => {
       if (!c.exists) { tr.append(el('td', { className: 'na', textContent: '–' })); return; }
-      const td = el('td', { className: 'c' + (c.partial ? ' partial' : '') });
+      const td = el('td', { className: 'c' + (c.partial ? ' partial' : '') + (c.m === mapMonth() ? ' now' : '') });
+      td.dataset.m = c.m;
       let bright;
       if (anom) {
         td.style.background = divColor(c.score); bright = false;
@@ -1297,7 +1341,7 @@ function render() {
       }
       td.style.color = bright ? '#0b0b0b' : '#f0efec';
       td.dataset.tip = `${MONTHS_LONG[moy]} ${r.y}: ${nf(c.v)} ${unit}\nMedian for ${MONTHS[moy]}: ${nf(md.med[moy])}` +
-        (c.anom === null ? '' : `\nDifference: ${pct(c.anom)}`) + (c.partial ? '\nIncomplete month' : '');
+        (c.anom === null ? '' : `\nDifference: ${pct(c.anom)}`) + (c.partial ? '\nIncomplete month' : '') + '\nClick to show this month on the map';
       tr.append(td);
     });
     tr.append(el('td', { className: 'tot', textContent: compact(r.sum), title: nf(r.sum) }));
@@ -1543,6 +1587,7 @@ function drawMonthly(md) {
   for (const m of months) {
     const g = svgEl('g', { class: 'hit' });
     g.dataset.tip = `${MONTHS_LONG[m % 12]} ${2000 + Math.floor(m / 12)}\n${nf(s[m])} ${UNITS[state.unit].long}`;
+    g.addEventListener('click', () => showMonthOnMap(m));
     g.append(svgEl('line', { class: 'cross', x1: x(m), x2: x(m), y1: pad.t, y2: H - pad.b, stroke: '#898781', opacity: 0 }));
     g.append(svgEl('rect', { x: x(m) - step / 2, y: pad.t, width: step, height: H - pad.t - pad.b, fill: 'transparent' }));
     svg.append(g);

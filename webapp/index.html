@@ -75,7 +75,9 @@
   #timebar .row label { color: var(--text-2); font-size: 13px; }
   #timebar .when { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
   #heatWhen { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
-  #heatCaption { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums;
+  #heatArea { font-size: 11px; color: var(--muted); }
+  #heatArea[hidden] { display: none; }
+  #heatCaption { font-size: 12px; color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* What the fire map's colours mean, same red-to-yellow as the map and the table. */
   .heatKey { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); white-space: nowrap; }
@@ -85,12 +87,12 @@
   .unitSeg button small { font-size: 11px; font-weight: 400; color: var(--muted); margin-left: 3px; }
   .unitSeg button.on small { color: var(--text-2); }
   /* Play: a round triangle button; pointing at it (or focusing it) swaps the triangle for the word. */
-  #playBtn { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; height: 32px; min-width: 32px;
-    padding: 0 10px; border-radius: 16px; background: #f37a22; border-color: #f37a22; color: #1a1200;
+  #playBtn { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; height: 36px; min-width: 36px;
+    padding: 0 10px; border-radius: 18px; background: #f37a22; border-color: #f37a22; color: #1a1200;
     font-weight: 600; white-space: nowrap; transition: background 0.15s; }
   #playBtn .lbl, #playBtn .ico { display: inline-flex; overflow: hidden;
     transition: max-width 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s; }
-  #playBtn .ico { max-width: 12px; opacity: 1; }
+  #playBtn .ico { max-width: 16px; opacity: 1; }
   #playBtn .lbl { max-width: 0; opacity: 0; }
   #playBtn:hover .ico, #playBtn:focus-visible .ico { max-width: 0; opacity: 0; }
   #playBtn:hover .lbl, #playBtn:focus-visible .lbl { max-width: 72px; opacity: 1; }
@@ -174,8 +176,11 @@
   table.cal th { font-weight: 500; color: var(--muted); padding: 2px 0; text-align: center; }
   table.cal th.y, table.cal td.y { width: 38px; text-align: left; color: var(--text-2); }
   table.cal td { text-align: center; padding: 4px 0; border-radius: 3px; white-space: nowrap; overflow: hidden; }
-  table.cal td.c { cursor: default; }
+  table.cal td.c { cursor: pointer; }
   table.cal td.c:hover { outline: 2px solid var(--text); outline-offset: -1px; }
+  /* The month shown on the fire map. */
+  table.cal td.c.now { outline: 2px solid var(--text); outline-offset: -2px; box-shadow: 0 0 0 2px #02030a; position: relative; z-index: 1; }
+  svg .hit { cursor: pointer; }
   table.cal td.na { color: var(--axis); }
   table.cal td.partial { box-shadow: inset 0 0 0 1px var(--muted); }
   table.cal td.tot, table.cal th.tot { width: 50px; text-align: right; color: var(--text); font-weight: 600; padding-right: 2px; }
@@ -205,7 +210,9 @@
     #timebar { bottom: 64px; }
     /* The month caption gets its own line instead of being cut to a letter. */
     #timebar .row { flex-wrap: wrap; row-gap: 4px; }
-    #heatCaption { order: 9; flex-basis: 100%; white-space: normal; }
+    #heatCaption { white-space: normal; }
+    /* "Show results" sits in the free strip under the fire-map bar, not over the search box. */
+    #panelTab { top: auto; bottom: 14px; left: 16px; right: 56px; }
     .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 12px; }
     .kpi:nth-child(3) { padding-left: 0; border-left: 0; }
     .brand span { display: none; }
@@ -270,8 +277,8 @@
     <span class="heatKey" aria-hidden="true">fewer <i></i> more hotspots</span>
   </div>
   <div class="row">
-    <button id="playBtn" aria-pressed="false" aria-label="Play" title="Show the world's fire map month by month, from November 2000 to the latest month"><span class="ico"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1v8l7-4z" fill="currentColor"/></svg></span><span class="lbl">Play</span></button>
-    <div class="when"><strong id="heatWhen"></strong><span id="heatCaption"></span></div>
+    <button id="playBtn" aria-pressed="false" aria-label="Play" title="Show the world's fire map month by month, from November 2000 to the latest month"><span class="ico"><svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true"><path d="M4 1.8v11.4c0 .6.6.9 1.1.6l8.6-5.7c.4-.3.4-.9 0-1.2L5.1 1.2C4.6.9 4 1.2 4 1.8z" fill="currentColor"/></svg></span><span class="lbl">Play</span></button>
+    <div class="when"><strong id="heatWhen"></strong><span id="heatCaption"></span><span id="heatArea" hidden></span></div>
     <label class="toggle" title="Show or hide the fire map"><input id="heatChk" type="checkbox" checked> Map</label>
     <input id="heatYear" type="number" inputmode="numeric" step="1" aria-label="Year">
   </div>

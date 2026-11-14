@@ -100,6 +100,12 @@ not correct for MODIS sensor ageing or for individual satellite outages.
 ### 5. The panel (`app.js`)
 - **Calendar:** years as rows, months as columns, in the units chosen (VIIRS or MODIS). The
   colour runs from dark red (few hotspots) through orange to yellow (many), on a log scale.
+- **Click a month** (a table cell, or a point on the Monthly record chart) to show it on the
+  fire map, in the same units. The fire-map bar then reads the selected area's own count and
+  the world's (e.g. "Brazil 897,540 · World 3,096,919"), the units, and where the number comes
+  from (VIIRS data, MODIS data, or one converted to the other). The cell of the month on the
+  map stays outlined. On a phone the results slide away so the globe and the bar show;
+  "Show results" brings them back.
 - **Anomaly view:** each month compared with the median of the same month across the
   chosen years. Blue = below normal, grey = normal, red = above normal.
 - **Headline figures:** total, most active year, peak month of the season, latest month
