@@ -26,7 +26,9 @@ in a working product.
 The harmonized record from 2000 to today. MODIS (since 2000) and VIIRS (since 2012) are merged
 into one series in VIIRS-equivalent units, using per-tile, per-month VIIRS/MODIS ratios, so
 years before and after 2012 can be compared fairly. Days when VIIRS was down are filled with
-converted MODIS. The Raw / Harmonized switch shows the fake jump in 2012 disappearing.
+converted MODIS. A VIIRS / MODIS switch shows the whole record in either sensor's units
+(375 m or 1 km pixels); the MODIS-unit series is provisional filler until the team's own
+VIIRS-to-MODIS conversion is added.
 
 ## Operating Context
 
@@ -46,22 +48,25 @@ converted MODIS. The Raw / Harmonized switch shows the fake jump in 2012 disappe
   about 411 million hotspots, converted by `tools/build_world.py`.
 - Features: rectangle selection (Shift+drag, or Select then drag), country selection
   (Shift+click, or Select then tap), month-level date range, calendar table, Counts/Anomaly
-  and Raw/Harmonized switches, charts (Unusual years, Monthly record, Fire season with
+  and VIIRS/MODIS units switches (the units switch also sits by the fire map), charts (Unusual years, Monthly record, Fire season with
   critical period), world fire map with month slider, year box and Play, downloads (monthly
   table CSV, hotspots-in-search CSV, PNG).
 - Removed on purpose; do not reintroduce unless asked: per-year naive-vs-harmonized chart,
   year-to-date chart, Excel download, Play speed button, "How does the latest fire activity
-  compare?" box.
-- Terminology: "hotspots", "VIIRS-equivalent hotspots", "Raw", "Harmonized", "anomaly",
+  compare?" box, the Raw / Harmonized switch and its green/blue sensor colours (replaced by
+  the VIIRS / MODIS units switch; tables stay red / orange / yellow).
+- Terminology: "hotspots", "VIIRS-equivalent hotspots", "MODIS-equivalent hotspots", "VIIRS
+  units (375 m)", "MODIS units (1 km)", "anomaly",
   "fire season", "critical period".
-- Open: how the teammate's Aqua-equivalent data will be shown alongside the current one.
+- Open: the teammates' VIIRS-to-MODIS and MODIS-to-VIIRS series will replace the
+  provisional MODIS-unit filler (`modisEq()` in `app.js`).
 
 ## Brand Commitments
 
 - Name: Fire Globe.
 - Language: English only, including CSV formats (comma separator, dot decimals).
-- Standing user preferences: fire data in red / orange / yellow; Raw view uses olive green for
-  MODIS and slate blue for VIIRS; bright satellite imagery; no glow around the globe; a glassy
+- Standing user preferences: fire data in red / orange / yellow everywhere (no sensor
+  colours); bright satellite imagery; no glow around the globe; glassy floating boxes and
   results panel; two decorative satellites in orbit (non-interactive).
 - Credits shown: NASA FIRMS, Esri, Natural Earth, OpenStreetMap Nominatim, MapLibre, and a
   note that an AI coding assistant (Claude) helped build it.

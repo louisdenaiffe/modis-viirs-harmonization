@@ -82,18 +82,23 @@ rectangle's edge are downloaded and checked hotspot by hotspot. The result is ex
   had not been launched and MODIS saw only the morning overpass.
 - Final series: before February 2012 = MODIS count x ratio; from February 2012 = VIIRS count.
 - Measured for Argentina: the VIIRS/MODIS ratio is between 3.1 (August) and 4.0 (March).
-- The **Raw / Harmonized** switch in the panel shows the effect.
+- **VIIRS / MODIS switch** (bottom-left bar and results panel, kept in step): shows the whole
+  record in VIIRS units (375 m pixels, the series above) or in MODIS units (1 km pixels).
+  The MODIS-unit series is **provisional filler** until the team's VIIRS-to-MODIS data is
+  added: the VIIRS-unit series times the selected area's MODIS/VIIRS ratio for each calendar
+  month, measured over Feb 2012 – Oct 2026 (the whole world's ratio where the area has none).
+  Checked on Brazil: within about 3% of the real MODIS counts every year, before and after
+  2012. To plug in the team's data, replace `modisEq()` in `app.js`. On the fire map the
+  switch changes the counts, not the picture: the conversion is a scale factor per place, and
+  the map's colours are relative to the busiest places of the month.
 
 Limits to be honest about: this is a statistical scaling of counts, not a physical model.
 It assumes the VIIRS/MODIS relationship of 2012-2025 also held in 2000-2011, and it does
 not correct for MODIS sensor ageing or for individual satellite outages.
 
 ### 5. The panel (`app.js`)
-- **Calendar:** years as rows, months as columns. In the **Harmonized** view the colour runs
-  from dark red (few hotspots) through orange to yellow (many), on a log scale.
-- **Raw view:** the colour tells you which satellite the number comes from, the shade how
-  many hotspots. Olive green shades = MODIS (before February 2012), slate blue shades = VIIRS (from
-  February 2012), darker = fewer, lighter = more, on the same scale for both.
+- **Calendar:** years as rows, months as columns, in the units chosen (VIIRS or MODIS). The
+  colour runs from dark red (few hotspots) through orange to yellow (many), on a log scale.
 - **Anomaly view:** each month compared with the median of the same month across the
   chosen years. Blue = below normal, grey = normal, red = above normal.
 - **Headline figures:** total, most active year, peak month of the season, latest month
@@ -103,8 +108,8 @@ not correct for MODIS sensor ageing or for individual satellite outages.
 - The date range is chosen month by month (From / To), or with **Last 12 months** / **All**.
 
 ### 6. Downloads (`app.js`)
-- **Monthly table (CSV):** raw MODIS, raw VIIRS and harmonized value for every month.
-- **Hotspots in this search (CSV):** one row per detection (latitude, longitude, date, satellite, confidence, fire power, day/night, harmonized weight) for the area and dates chosen. It is written piece by piece straight to disk, with a limit of 3 million rows; above that the app explains and offers the largest recent date range that fits.
+- **Monthly table (CSV):** original MODIS, original VIIRS, VIIRS-equivalent and (provisional) MODIS-equivalent value for every month.
+- **Hotspots in this search (CSV):** one row per detection (latitude, longitude, date, satellite, confidence, fire power, day/night, VIIRS-equivalent weight) for the area and dates chosen. It is written piece by piece straight to disk, with a limit of 3 million rows; above that the app explains and offers the largest recent date range that fits.
 - **PNG:** the calendar and the charts as one picture.
 
 ### 7. The current year (`tools/legacy/fetch_nrt.py`, then `tools/fetch_nrt_world.py`)
@@ -171,7 +176,7 @@ those months look calmer than they were. MODIS kept flying, so we use it to fill
    marked as missing VIIRS for that day. On a full outage every block is marked; on a
    partial one (a few lost orbits) only the blocks under those orbits.
 3. **Fill.** For those block-days the harmonized count uses that day's MODIS hotspots times
-   the local VIIRS/MODIS ratio, exactly as for the years before VIIRS. Raw counts are not
+   the local VIIRS/MODIS ratio, exactly as for the years before VIIRS. Original counts are not
    changed.
 - Checked: on full-outage days the filled totals match the expected worldwide VIIRS count
   within about 5%. In 2026 the fill adds about 820,000 VIIRS-equivalent hotspots (5%).

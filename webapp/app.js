@@ -313,17 +313,8 @@ function countryArea(c) {
 }
 function drawCountry(c) {
   map.getSource('aoi').setData(aoiFeatures(c.p));
-  const box = $('readout');
-  box.hidden = false;
-  box.textContent = '';
-  const head = document.createElement('b');
-  head.textContent = c.n;
-  const sub = document.createElement('div');
-  sub.textContent = (c.area / 1e6).toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' km²';
-  const hint = document.createElement('div');
-  hint.style.color = 'var(--muted)';
-  hint.textContent = 'Click elsewhere to deselect';
-  box.append(head, sub, hint);
+  // No floating name box: the results panel already carries the country's name and size.
+  $('readout').hidden = true;
 }
 async function countryAt(ll) {
   const x = wrapLng(ll.lng), y = ll.lat, list = await loadCountries();
@@ -746,6 +737,38 @@ function loadCountryTotals() {
 }
 let precomputing = false;
 
+/* ----- Units: every month counted as VIIRS (375 m pixels) or as MODIS (1 km pixels) would see it ----- */
+// vEq: the record built here. Before Feb 2012 MODIS is converted to VIIRS with per-tile ratios;
+//      from Feb 2012 it is VIIRS itself (outage days filled with converted MODIS).
+// mEq: the same record in MODIS units. PROVISIONAL FILLER until the team's VIIRS -> MODIS data
+//      is added: the vEq record times this area's MODIS/VIIRS ratio for each calendar month,
+//      measured over the years both sensors flew. Before 2012 this gives back (about) the MODIS
+//      counts; from 2012 it is VIIRS converted to MODIS. Replace modisEq() with the team's series.
+const UNITS = {
+  vEq: { name: 'VIIRS', px: '375 m', long: 'VIIRS-equivalent hotspots' },
+  mEq: { name: 'MODIS', px: '1 km', long: 'MODIS-equivalent hotspots' }
+};
+function modisFactors(mod, vEq, fallback) {
+  const ix = data.index, a = new Float64Array(12), b = new Float64Array(12);
+  for (let m = ix.overlap[0]; m <= ix.overlap[1]; m++) { a[m % 12] += mod[m]; b[m % 12] += vEq[m]; }
+  return [...a].map((x, i) => (b[i] > 0 && x > 0 ? x / b[i] : fallback ? fallback[i] : 0));
+}
+let worldK = null;                                   // the whole world's factors, for the fire map
+function worldFactors() {
+  if (!worldK) {
+    const M = data.index.months, mod = new Float64Array(M), v = new Float64Array(M);
+    for (const b of data.blockList) for (let m = 0; m < M; m++) { mod[m] += b.mod[m]; v[m] += b.harm[m]; }
+    worldK = modisFactors(mod, v, null);
+  }
+  return worldK;
+}
+function modisEq(out) {
+  const k = modisFactors(out.modis, out.harm, worldFactors());
+  out.vEq = out.harm;
+  out.mEq = out.harm.map((v, m) => v * k[m % 12]);
+  return out;
+}
+
 async function query(sel, onProgress) {
   const ix = data.index, M = ix.months, era = data.era;
   const out = { modis: new Float64Array(M), viirs: new Float64Array(M), raw: new Float64Array(M),
@@ -758,7 +781,7 @@ async function query(sel, onProgress) {
         out.raw[m] = era[m] ? out.viirs[m] : out.modis[m];
       }
       out.tiles = out.harm.some(v => v > 0) ? 1 : 0;
-      return out;
+      return modisEq(out);
     }
   }
   // check = MODIS converted to VIIRS units for every month, including the VIIRS years, so
@@ -795,7 +818,7 @@ async function query(sel, onProgress) {
       }
     }
   }, onProgress);
-  return out;
+  return modisEq(out);
 }
 
 /* ----- Fire map: month slider + year box drive a red heat layer on the globe ----- */
@@ -859,8 +882,8 @@ async function showHeat() {
   if (hasData) {
     try { feats = await heatFeatures(m, blocks); } catch { feats = []; }
     if (token !== heat.token) return;
-    const total = data.blockList.reduce((a, b) => a + b.harm[m], 0);
-    note = Math.round(total).toLocaleString('en-US') + ' hotspots' + (m === ix.partialMonth ? ' (incomplete month)' : '');
+    const total = data.blockList.reduce((a, b) => a + b.harm[m], 0) * (state.unit === 'mEq' ? worldFactors()[moy] : 1);
+    note = Math.round(total).toLocaleString('en-US') + ' ' + UNITS[state.unit].long + (m === ix.partialMonth ? ' (incomplete month)' : '');
     const p = blocks ? HEAT_PAINT.detail : HEAT_PAINT.world;
     // Strength relative to the busiest places this month (99th percentile), square-rooted so
     // medium activity still shows: quiet areas glow dark red, the busiest ones yellow.
@@ -872,7 +895,8 @@ async function showHeat() {
     map.setPaintProperty('heat', 'heatmap-radius', p.radius);
   }
   map.getSource('heat').setData({ type: 'FeatureCollection', features: feats });
-  $('heatCaption').textContent = on ? `${MONTHS_LONG[moy]} ${year} · ${note} · ${ix.coverage}` : 'Fire map hidden';
+  $('heatWhen').textContent = `${MONTHS_LONG[moy]} ${year}`;
+  $('heatCaption').textContent = on ? note : 'Fire map hidden';
 }
 /* ----- Play: the world's fire map month by month, from the first to the last month ----- */
 // About 6 months per second: the whole record (Nov 2000 to today) plays in under a minute.
@@ -951,7 +975,7 @@ Promise.all([ready, new Promise(res => map.once('load', res))]).then(() => {
 
 /* ================= 5. Panel ================= */
 // m0..m1: the chosen date range, as month numbers since January 2000; y0..y1 are its years.
-const state = { sel: null, result: null, mode: 'harm', view: 'count', m0: 0, m1: 0, y0: 0, y1: 0, model: null, token: 0 };
+const state = { sel: null, result: null, unit: 'vEq', view: 'count', m0: 0, m1: 0, y0: 0, y1: 0, model: null, token: 0 };
 const fullYears = () => state.m0 % 12 === 0 && state.m1 % 12 === 11;
 const monthName = m => `${MONTHS[m % 12]} ${2000 + Math.floor(m / 12)}`;
 const rangeLabel = () => fullYears() ? (state.y0 === state.y1 ? `${state.y0}` : `${state.y0}–${state.y1}`) : `${monthName(state.m0)} – ${monthName(state.m1)}`;
@@ -980,16 +1004,10 @@ const SEQ = ['#4a0d06', '#8a1609', '#c4240d', '#e8471a', '#f37a22', '#f9a72f', '
 const textOn = rgb => { const [r, g, b] = rgb.match(/\d+/g).map(Number); return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#0b0b0b' : '#f0efec'; };
 const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const mix = (a, b, t) => { const A = hex(a), B = hex(b); return 'rgb(' + A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',') + ')'; };
-// Raw view: the colour says which satellite the number comes from (green = MODIS, blue = VIIRS)
-// and the shade says how many hotspots, dark (few) to light (many), on the same log scale.
-const MODIS_SEQ = ['#56663a', '#677a44', '#7a8e51', '#8fa364', '#a8b97f', '#c3d0a1', '#dde5c6'];
-const VIIRS_SEQ = ['#44707a', '#52818b', '#62929c', '#77a5ae', '#91b9c1', '#afcdd3', '#d0e3e7'];
 function seqColor(t, ramp = SEQ) {
   const x = Math.max(0, Math.min(1, t)) * (ramp.length - 1), i = Math.min(ramp.length - 2, Math.floor(x));
   return mix(ramp[i], ramp[i + 1], x - i);
 }
-// Ramp for one month of the calendar: fire colours when harmonized, sensor colours when raw.
-const rampFor = m => state.mode === 'harm' ? SEQ : (data.era[m] ? VIIRS_SEQ : MODIS_SEQ);
 const divColor = d => mix('#383835', d < 0 ? '#3987e5' : '#e66767', Math.min(1, Math.abs(d)));
 // Anomaly on a log scale: -1 means a quarter of normal or less, +1 means four times normal or more.
 const anomScore = (v, med) => Math.max(-1, Math.min(1, Math.log2((v + 1) / (med + 1)) / 2));
@@ -1095,7 +1113,21 @@ function segmented(id, key) {
     render();
   });
 }
-segmented('modeSeg', 'mode'); segmented('viewSeg', 'view');
+segmented('viewSeg', 'view');
+function setUnit(u) {
+  state.unit = u;
+  for (const b of document.querySelectorAll('.unitSeg button')) {
+    b.classList.toggle('on', b.dataset.v === u);
+    b.setAttribute('aria-pressed', b.dataset.v === u);
+  }
+  heat.shown = '';
+  showHeat();
+  render();
+}
+for (const g of document.querySelectorAll('.unitSeg')) g.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (b) setUnit(b.dataset.v);
+});
 // Date range: a start month + year and an end month + year.
 function setRange(m0, m1) {
   if (m0 > m1) [m0, m1] = [m1, m0];
@@ -1120,7 +1152,7 @@ ready.then(() => {
 
 // Everything shown in the panel is derived here from the monthly series.
 function buildModel() {
-  const ix = data.index, s = state.result[state.mode];
+  const ix = data.index, s = state.result[state.unit];
   const exists = m => m >= ix.firstMonth && m <= ix.lastMonth && m >= state.m0 && m <= state.m1;
   const usable = m => exists(m) && m !== ix.partialMonth;
   const years = [];
@@ -1163,12 +1195,12 @@ function el(tag, props = {}, ...kids) {
 
 function render() {
   if (!state.result) return;
-  const md = state.model = buildModel(), harm = state.mode === 'harm', anom = state.view === 'anom';
-  const unit = harm ? 'VIIRS-equivalent hotspots' : 'hotspots (raw)';
+  const md = state.model = buildModel(), anom = state.view === 'anom';
+  const unit = UNITS[state.unit].long;
 
-  $('modeNote').textContent = harm
-    ? 'Harmonized: MODIS years (before Feb 2012) are scaled to what VIIRS would have detected, so every year is comparable.'
-    : 'Raw: MODIS counts before Feb 2012, VIIRS counts after, with no correction. The jump in 2012 is the sensor change, not more fire. Green = MODIS, blue = VIIRS; darker = fewer hotspots, lighter = more.';
+  $('modeNote').textContent = state.unit === 'vEq'
+    ? 'Every month counted as VIIRS (375 m pixels) would see it. Before February 2012, when only MODIS flew, the MODIS counts are converted to VIIRS.'
+    : 'Every month counted as MODIS (1 km pixels) would see it. From February 2012 the VIIRS counts are converted to MODIS. Provisional: this conversion is a stand-in until the team’s own VIIRS-to-MODIS data is added.';
 
   // --- headline figures ---
   const k = $('kpis'); k.textContent = '';
@@ -1205,7 +1237,7 @@ function render() {
         td.style.fontSize = '10px';
       } else {
         const tt = md.heat(c.v);
-        const col = seqColor(tt, rampFor(c.m));
+        const col = seqColor(tt);
         if (c.v > 0) td.style.background = col;
         bright = c.v > 0 && textOn(col) === '#0b0b0b';
         td.textContent = compact(c.v);
@@ -1231,13 +1263,7 @@ function render() {
     ramp.append('¼ of normal or less', bar, '4× normal or more');
   } else {
     bar.style.background = `linear-gradient(90deg,${SEQ.join(',')})`;
-    if (harm) ramp.append(compact(md.min), bar, compact(md.max) + ' (log scale)');
-    else {
-      const bar2 = el('i'), dot = (c, t) => el('b', { textContent: t, style: `color:${c};font-weight:600` });
-      bar.style.background = `linear-gradient(90deg,${MODIS_SEQ.join(',')})`;
-      bar2.style.background = `linear-gradient(90deg,${VIIRS_SEQ.join(',')})`;
-      ramp.append(compact(md.min), dot('#a8b97f', 'MODIS'), bar, dot('#91b9c1', 'VIIRS'), bar2, compact(md.max) + ' (log scale)');
-    }
+    ramp.append(compact(md.min), bar, compact(md.max) + ' (log scale)');
   }
   $('calNote').textContent = (anom ? 'Each month is compared with the median of the same month over ' + rangeLabel() + '. ' : '') +
     (md.ix.partialMonth >= 0 ? 'The outlined month is incomplete and is left out of the medians. ' : '') +
@@ -1257,7 +1283,7 @@ function render() {
     ? `This search holds ${nf(rawPts)} hotspots, too many for one file (the limit is ${nf(MAX_POINTS)}).`
     : `The hotspot file will contain ${nf(rawPts)} rows, about ${mb} MB (every MODIS and VIIRS detection in the area and dates chosen).`;
   $('sourceNote').textContent = `Source: NASA FIRMS archive (MODIS Collection 6.1, VIIRS S-NPP 375 m), ${md.ix.coverage}, ` +
-    `${md.ix.firstDate} to ${md.ix.lastDate}. Harmonization ratios measured over Feb 2012 – ${MONTHS[md.ix.overlap[1] % 12]} ${2000 + Math.floor(md.ix.overlap[1] / 12)}.` +
+    `${md.ix.firstDate} to ${md.ix.lastDate}. VIIRS/MODIS ratios measured over Feb 2012 – ${MONTHS[md.ix.overlap[1] % 12]} ${2000 + Math.floor(md.ix.overlap[1] / 12)}.` +
     ((md.ix.gapDays || []).length ? ` VIIRS outage days (${md.ix.gapDays.length}, e.g. ${md.ix.gapDays.slice(-3).join(', ')}) are filled with converted MODIS.` : '');
 }
 
@@ -1432,19 +1458,19 @@ function drawAnomaly(md, unit) {
     (part ? ` ${part.y} (paler) is not finished: it is compared with ${part.span} of the other years.` : '');
 }
 
-// The harmonized record month by month.
+// The whole record month by month, in the chosen units.
 function drawMonthly(md) {
-  const svg = $('monthlyChart'), W = 560, H = 220, pad = { l: 44, r: 10, t: 16, b: 26 }, r = state.result, ix = md.ix;
+  const svg = $('monthlyChart'), W = 560, H = 220, pad = { l: 44, r: 10, t: 16, b: 26 }, s = md.s, ix = md.ix, vu = state.unit === 'vEq';
   const months = [];
   for (const row of md.rows) for (const c of row.cells) if (c.exists && !c.partial) months.push(c.m);
   legend('monthlyLegend', [[`linear-gradient(90deg,${SEQ.slice(2).join(',')})`, 'Hotspots per month (colour = how many)']]);
   if (!months.length) { svg.textContent = ''; return; }
-  const top = niceMax(Math.max(...months.map(m => r.harm[m]), 1));
+  const top = niceMax(Math.max(...months.map(m => s[m]), 1));
   const y = axes(svg, W, H, pad, top);
   const m0 = months[0], m1 = months[months.length - 1], x = m => pad.l + (m1 > m0 ? (m - m0) / (m1 - m0) : 0.5) * (W - pad.l - pad.r);
   if (ix.viirsStart > m0 && ix.viirsStart <= m1) {
     svg.append(svgEl('line', { x1: x(ix.viirsStart), x2: x(ix.viirsStart), y1: pad.t - 6, y2: H - pad.b, stroke: '#898781', 'stroke-dasharray': '3 3' }));
-    label(svg, x(ix.viirsStart) + 4, pad.t + 2, 'VIIRS-based from here', 'start', '#898781', 10);
+    label(svg, x(ix.viirsStart) + 4, pad.t + 2, vu ? 'VIIRS data from here' : 'converted from VIIRS from here', 'start', '#898781', 10);
   }
   const path = (get, color, w, opacity = 1) => {
     let d = '', prev = -2;
@@ -1454,7 +1480,7 @@ function drawMonthly(md) {
   const grad = svgEl('linearGradient', { id: 'fireGrad', gradientUnits: 'userSpaceOnUse', x1: 0, x2: 0, y1: H - pad.b, y2: pad.t });
   SEQ.slice(2).forEach((c, i, a) => grad.append(svgEl('stop', { offset: i / (a.length - 1), 'stop-color': c })));
   const defs = svgEl('defs'); defs.append(grad); svg.append(defs);
-  path(m => r.harm[m], 'url(#fireGrad)', 1.6);
+  path(m => s[m], 'url(#fireGrad)', 1.6);
   const y0 = 2000 + Math.floor(m0 / 12), y1 = 2000 + Math.floor(m1 / 12), every = y1 - y0 > 18 ? 5 : y1 - y0 > 8 ? 2 : 1;
   for (let yr = y0; yr <= y1; yr++) if (yr % every === 0 || y1 - y0 < 3) {
     const m = (yr - 2000) * 12;
@@ -1463,12 +1489,14 @@ function drawMonthly(md) {
   const step = (W - pad.l - pad.r) / Math.max(1, m1 - m0);
   for (const m of months) {
     const g = svgEl('g', { class: 'hit' });
-    g.dataset.tip = `${MONTHS_LONG[m % 12]} ${2000 + Math.floor(m / 12)}\n${nf(r.harm[m])} hotspots (harmonized)`;
+    g.dataset.tip = `${MONTHS_LONG[m % 12]} ${2000 + Math.floor(m / 12)}\n${nf(s[m])} ${UNITS[state.unit].long}`;
     g.append(svgEl('line', { class: 'cross', x1: x(m), x2: x(m), y1: pad.t, y2: H - pad.b, stroke: '#898781', opacity: 0 }));
     g.append(svgEl('rect', { x: x(m) - step / 2, y: pad.t, width: step, height: H - pad.t - pad.b, fill: 'transparent' }));
     svg.append(g);
   }
-  $('monthlyNote').textContent = 'Every month of the selected years in one line, to spot the biggest fire months and long-term changes. From February 2012 the counts come from VIIRS; before that, MODIS converted to VIIRS units.';
+  $('monthlyNote').textContent = 'Every month of the selected years in one line, to spot the biggest fire months and long-term changes. ' + (vu
+    ? 'From February 2012 the counts come from VIIRS; before that, MODIS converted to VIIRS.'
+    : 'Until February 2012 the counts come from MODIS; after that, VIIRS converted to MODIS.');
 }
 
 // One shared tooltip for table cells and chart marks.
@@ -1571,10 +1599,10 @@ const fileStem = () => {
 $('dlTable').onclick = () => runDownload($('dlTable'), `${fileStem()}_monthly.csv`, async write => {
   const r = state.result, md = state.model;
   const out = tableSink(write);
-  out.begin(['year', 'month', 'modis_raw', 'viirs_raw', 'harmonized_viirs_equivalent', 'source', 'complete_month']);
+  out.begin(['year', 'month', 'modis_original', 'viirs_original', 'viirs_equivalent', 'modis_equivalent_provisional', 'source', 'complete_month']);
   const rows = [];
   for (const row of md.rows) for (const c of row.cells) if (c.exists) {
-    rows.push([row.y, c.m % 12 + 1, r.modis[c.m], r.viirs[c.m], +r.harm[c.m].toFixed(1),
+    rows.push([row.y, c.m % 12 + 1, r.modis[c.m], r.viirs[c.m], +r.vEq[c.m].toFixed(1), +r.mEq[c.m].toFixed(1),
       inViirsEra(c.m) ? (data.gapIdx[c.m] >= 0 ? 'VIIRS + MODIS scaled on VIIRS outage days' : 'VIIRS') : 'MODIS scaled', c.partial ? 'no' : 'yes']);
   }
   out.rows(rows);
@@ -1602,7 +1630,7 @@ $('dlPoints').onclick = () => state.rawPoints > MAX_POINTS ? tooManyPoints() : r
     const m0 = state.m0, m1 = state.m1;
     const SAT = ['Terra', 'Aqua', 'Suomi NPP'], CONF = ['low', 'nominal', 'high'];
     const out = tableSink(write);
-    out.begin(['latitude', 'longitude', 'acq_date', 'satellite', 'instrument', 'confidence', 'frp', 'daynight', 'type', 'harmonized_weight']);
+    out.begin(['latitude', 'longitude', 'acq_date', 'satellite', 'instrument', 'confidence', 'frp', 'daynight', 'type', 'viirs_equivalent_weight']);
     await walk(state.sel, true, {
       points(t, dv, n, keep) {
         const rows = [];
@@ -1636,7 +1664,7 @@ $('dlPng').onclick = () => runDownload($('dlPng'), fileStem() + (state.view === 
     c.fillStyle = color; c.font = `${weight} ${size}px ${FONT}`; c.textAlign = align; c.fillText(s, x, y);
   };
   const anom = state.view === 'anom';
-  text((anom ? 'Fire activity anomaly' : 'Burning activity calendar') + (state.mode === 'harm' ? ' (harmonized MODIS + VIIRS)' : ' (raw counts)'), 24, 38, '#f0efec', 22, 'left', 600);
+  text((anom ? 'Fire activity anomaly' : 'Burning activity calendar') + ` (${UNITS[state.unit].long}, ${UNITS[state.unit].px} pixels)`, 24, 38, '#f0efec', 22, 'left', 600);
   text(`Area: ${sel.country ? sel.country + ' · ' : ''}${sel.south.toFixed(4)}° to ${sel.north.toFixed(4)}° lat, ${sel.west.toFixed(4)}° to ${sel.east.toFixed(4)}° lon · ${fmtArea(sel.areaM2)} · ${rangeLabel()}`, 24, 62, '#c3c2b7');
   text($('sourceNote').textContent, 24, 82, '#898781', 11);
   let y = 110;
@@ -1648,9 +1676,9 @@ $('dlPng').onclick = () => runDownload($('dlPng'), fileStem() + (state.view === 
     r.cells.forEach((cell, i) => {
       if (!cell.exists) { text('–', x0 + cw * (i + 0.5), y, '#383835', 12, 'center'); return; }
       const tt = md.heat(cell.v);
-      if (anom || cell.v > 0) { c.fillStyle = anom ? divColor(cell.score) : seqColor(tt, rampFor(cell.m)); c.fillRect(x0 + cw * i + 1, y - 16, cw - 2, rowH - 2); }
+      if (anom || cell.v > 0) { c.fillStyle = anom ? divColor(cell.score) : seqColor(tt); c.fillRect(x0 + cw * i + 1, y - 16, cw - 2, rowH - 2); }
       const label = anom ? (cell.anom === null ? (cell.v > 0 ? 'new' : '0') : pct(cell.anom)) : nf(cell.v);
-      text(label, x0 + cw * (i + 0.5), y, !anom && cell.v > 0 ? textOn(seqColor(tt, rampFor(cell.m))) : '#f0efec', 12, 'center');
+      text(label, x0 + cw * (i + 0.5), y, !anom && cell.v > 0 ? textOn(seqColor(tt)) : '#f0efec', 12, 'center');
     });
     text(nf(r.sum), W - 30, y, '#f0efec', 12, 'right', 600);
   }
@@ -1670,7 +1698,7 @@ $('dlPng').onclick = () => runDownload($('dlPng'), fileStem() + (state.view === 
   text('Unusual years: difference from the average', 616, y + 14, '#c3c2b7', 13);
   await drawSvg('seasonChart', 24, y + 26, 560, 220);
   await drawSvg('anomChart', 616, y + 26, 560, 220);
-  text('Monthly record, harmonized (colour = number of hotspots)', 24, y + 280, '#c3c2b7', 13);
+  text('Monthly record (colour = number of hotspots)', 24, y + 280, '#c3c2b7', 13);
   await drawSvg('monthlyChart', 24, y + 292, 1152, 452);
   await write(await new Promise(res => cv.toBlob(res, 'image/png')));
 });
