@@ -35,6 +35,18 @@ You spin a globe, draw a rectangle, and get a burning-activity calendar for that
 - Minimum size is 375 m x 375 m (one VIIRS pixel). There is no maximum.
 - Orange corner dots resize it; exact coordinates can be typed in the panel.
 
+### 2b. Selecting a whole country (Shift + click)
+- Hold **Shift and click** (without dragging) on a country: its border is outlined and
+  the panel shows the hotspots inside that border. A plain click elsewhere deselects it.
+- Borders come from Natural Earth 1:50,000,000 (public domain), stored in
+  `geo/countries.json` (242 countries).
+- How it counts: the border is indexed by thin latitude bands (0.02°). Map squares fully
+  inside the border use their stored monthly totals; squares crossed by the border are
+  read hotspot by hotspot and each point is tested against the border.
+- Checked: identical to testing every hotspot one by one (Argentina, Portugal, Fiji), and
+  Argentina matches NASA's own Argentina file to 99.94% (the small gap is the difference
+  between NASA's border and Natural Earth's).
+
 ### 3. Preparing the data (`tools/build_tiles.py`)
 Run once, in Python, with no extra packages:
 
@@ -117,6 +129,34 @@ outlined in the table, left out of the medians, and left out of the harmonizatio
   The strength uses a log scale, so one huge fire does not hide the smaller ones.
 - The satellite picture is dimmed while the fire map is on so the reds stand out.
 - The calendar table uses the same idea in red: darker = fewer hotspots, lighter = more.
+
+### 10. The whole world (`tools/build_world.py`, `tools/fetch_nrt_world.py`)
+- Source: NASA FIRMS country archives for every country, MODIS 2000-2025 and VIIRS
+  2012-2025 (8,337 CSV files, 29 GB, 392.6 million hotspots), plus 2026 from the API.
+- `build_world.py` reads the files four at a time and stores them in 10-degree blocks,
+  1-degree tiles, and, where fires are dense, up to 16 x 16 cells per tile. Monthly totals
+  are kept at every level, so any selection is answered in milliseconds and only the
+  pieces cut by its edge are read point by point. Checked: identical to counting every
+  hotspot one by one.
+- Harmonization ratios are computed per tile and month of the year; sparse tiles lean on
+  their 10-degree block, and blocks on the global ratio (VIIRS sees 3.9 to 5.1 times more
+  hotspots than MODIS worldwide, depending on the month).
+- 2026: for the whole world, FIRMS returns one day per request and charges 36 of the
+  5,000 credits allowed per 10 minutes, so `fetch_nrt_world.py` paces itself (about an
+  hour). It keeps only points inside a country (Natural Earth outline) to match the
+  archives; checked against 10 July 2025, it agrees with the archive within 0.3%.
+- Known gap: the VIIRS satellite has outage days in 2026 (for example 10-12 March, half
+  of 10 July). Those months are slightly undercounted.
+
+### 11. The charts in the panel (and what each answers)
+| Chart | Question it answers |
+|---|---|
+| Calendar table (red → yellow) | When and where has burning happened, month by month? |
+| Sensors added up against harmonized | Does the harmonization remove the 2012 sensor jump? Which years burned most? |
+| Unusual years | How far above or below the multi-year average was each year? |
+| Monthly record | Every month in one line: biggest fire months, long-term change |
+| Fire season + critical period | Which months see most fires? The shaded critical period is the shortest run of consecutive months holding at least 80% of a typical year's hotspots (it may run over New Year). |
+| Year to date | Is this year ahead of or behind a normal year so far? |
 
 ## Current limits
 - Data loaded: **Argentina only**, to mid-November 2026. A selection that spills into a
