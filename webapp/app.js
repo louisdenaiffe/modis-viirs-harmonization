@@ -587,11 +587,20 @@ function heatBlocks() {
     (((k.lo - west) % 360 + 360) % 360 < span || ((west - k.lo) % 360 + 360) % 360 < 10));
   return near.length && near.length <= 24 ? near : null;
 }
+// World fire-map files, kept in memory so an animation can run smoothly (about 0.3 MB each).
+const heat0Cache = new Map();
+function getHeat0(m) {
+  if (!heat0Cache.has(m)) {
+    if (heat0Cache.size > 60) heat0Cache.delete(heat0Cache.keys().next().value);
+    heat0Cache.set(m, fetch(`data/heat0/${m}.bin`).then(r => r.arrayBuffer()));
+  }
+  return heat0Cache.get(m);
+}
 async function heatFeatures(m, blocks) {
   const ix = data.index, feats = [];
   const push = (x, y, w) => feats.push({ type: 'Feature', properties: { w }, geometry: { type: 'Point', coordinates: [x, y] } });
   if (!blocks) {
-    const buf = await (await fetch(`data/heat0/${m}.bin`)).arrayBuffer();
+    const buf = await getHeat0(m);
     const u = new Uint16Array(buf), f = new Float32Array(buf);
     for (let i = 0; i < f.length; i += 2) push((u[2 * i] + 0.5) * ix.heat0 - 180, (u[2 * i + 1] + 0.5) * ix.heat0 - 90, f[i + 1]);
     return feats;
@@ -628,15 +637,69 @@ async function showHeat() {
     const p = blocks ? HEAT_PAINT.detail : HEAT_PAINT.world;
     // Strength relative to the busiest places this month (99th percentile), square-rooted so
     // medium activity still shows: quiet areas glow dark red, the busiest ones yellow.
-    const ws = feats.map(f => f.properties.w).sort((a, b) => a - b), p99 = ws.length ? ws[Math.floor(ws.length * 0.99)] || 1 : 1;
+    const ws = feats.map(f => f.properties.w).sort((a, b) => a - b);
+    // While the animation plays, one fixed scale for every month, so quiet months look
+    // quiet and big fire seasons stand out; otherwise each month uses its own scale.
+    const p99 = play.on && play.scale && !blocks ? play.scale : (ws.length ? ws[Math.floor(ws.length * 0.99)] || 1 : 1);
     map.setPaintProperty('heat', 'heatmap-weight', ['min', 1, ['sqrt', ['/', ['get', 'w'], p99]]]);
     map.setPaintProperty('heat', 'heatmap-radius', p.radius);
   }
   map.getSource('heat').setData({ type: 'FeatureCollection', features: feats });
   $('heatCaption').textContent = on ? `${MONTHS_LONG[moy]} ${year} · ${note} · ${ix.coverage}` : 'Fire map hidden';
 }
+/* ----- Play: the world's fire map month by month, from the first to the last month ----- */
+const play = { on: false, timer: 0, scale: null, speed: 1 };
+const SPEEDS = [1, 2, 4], MS_PER_MONTH = 350;
+async function playScale() {
+  if (play.scale) return play.scale;
+  // The scale comes from the busiest month on record, so every month is drawn against it.
+  const M = data.index.months, tot = new Float64Array(M);
+  for (const b of data.blockList) for (let m = 0; m < M; m++) tot[m] += b.harm[m];
+  const busiest = tot.indexOf(Math.max(...tot));
+  const f = new Float32Array(await getHeat0(busiest)), ws = [];
+  for (let i = 1; i < f.length; i += 2) ws.push(f[i]);
+  ws.sort((a, b) => a - b);
+  return (play.scale = ws[Math.floor(ws.length * 0.99)] || 1);
+}
+function stopPlay() {
+  play.on = false;
+  clearTimeout(play.timer);
+  $('playBtn').textContent = '▶ Play';
+  $('playBtn').setAttribute('aria-pressed', 'false');
+  heat.shown = '';
+  showHeat();                                     // back to the month's own colour scale
+}
+async function startPlay() {
+  const ix = data.index;
+  let m = (+$('heatYear').value - 2000) * 12 + +$('heatMonth').value;
+  if (m >= ix.lastMonth) m = ix.firstMonth;        // at the end: start again from the beginning
+  play.on = true;
+  $('playBtn').textContent = '❚❚ Pause';
+  $('playBtn').setAttribute('aria-pressed', 'true');
+  $('heatChk').checked = true;
+  await playScale();
+  const tick = async () => {
+    if (!play.on) return;
+    const t0 = performance.now();
+    $('heatYear').value = 2000 + Math.floor(m / 12);
+    $('heatMonth').value = m % 12;
+    getHeat0(m + 1); getHeat0(m + 2);              // fetch the next months ahead of time
+    await showHeat();
+    if (!play.on) return;
+    if (m >= ix.lastMonth) { stopPlay(); return; }
+    m++;
+    play.timer = setTimeout(tick, Math.max(0, MS_PER_MONTH / play.speed - (performance.now() - t0)));
+  };
+  tick();
+}
+
 Promise.all([ready, new Promise(res => map.once('load', res))]).then(() => {
   if (data.error) { $('heatCaption').textContent = 'Fire map data could not be loaded'; return; }
+  $('playBtn').onclick = () => (play.on ? stopPlay() : startPlay());
+  $('speedBtn').onclick = () => {
+    play.speed = SPEEDS[(SPEEDS.indexOf(play.speed) + 1) % SPEEDS.length];
+    $('speedBtn').textContent = play.speed + '×';
+  };
   const ix = data.index, fy = 2000 + Math.floor(ix.firstMonth / 12), ly = 2000 + Math.floor(ix.lastMonth / 12);
   // Start on the newest complete month.
   const startM = ix.partialMonth === ix.lastMonth ? ix.lastMonth - 1 : ix.lastMonth;
@@ -646,13 +709,13 @@ Promise.all([ready, new Promise(res => map.once('load', res))]).then(() => {
   MONTHS.forEach((mn, i) => {
     const s = document.createElement('span');
     s.textContent = mn;
-    s.onclick = () => { slider.value = i; showHeat(); };
+    s.onclick = () => { if (play.on) stopPlay(); slider.value = i; showHeat(); };
     $('monthTicks').append(s);
   });
-  slider.oninput = showHeat;
+  slider.oninput = () => { if (play.on) stopPlay(); showHeat(); };
   $('heatChk').onchange = showHeat;
   // Typing a year: update as soon as it is a valid year; tidy it when the box is left.
-  yearBox.oninput = () => { const y = +yearBox.value; if (Number.isInteger(y) && y >= fy && y <= ly) showHeat(); };
+  yearBox.oninput = () => { if (play.on) stopPlay(); const y = +yearBox.value; if (Number.isInteger(y) && y >= fy && y <= ly) showHeat(); };
   yearBox.onchange = () => { yearBox.value = Math.max(fy, Math.min(ly, Math.round(+yearBox.value) || ly)); showHeat(); };
   // Moving or zooming the globe can change which level of detail is needed.
   let moveTimer = 0;

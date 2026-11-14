@@ -58,6 +58,9 @@
   #timebar .row label { color: var(--text-2); font-size: 13px; }
   #heatCaption { flex: 1; font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #playBtn { padding: 5px 12px; background: #f37a22; border-color: #f37a22; color: #1a1200; font-weight: 600; white-space: nowrap; }
+  #playBtn:hover { background: #f9a72f; }
+  #speedBtn { padding: 5px 8px; min-width: 38px; font-variant-numeric: tabular-nums; }
   #heatYear { width: 78px; font-weight: 600; font-variant-numeric: tabular-nums; }
   #heatMonth { width: 100%; margin: 0; padding: 0; border: 0; background: transparent; accent-color: #f37a22;
     cursor: ew-resize; }
@@ -176,6 +179,8 @@
 
 <div id="timebar">
   <div class="row">
+    <button id="playBtn" aria-pressed="false" title="Show the world's fire map month by month, from November 2000 to the latest month">▶ Play</button>
+    <button id="speedBtn" title="Animation speed">1×</button>
     <label class="toggle"><input id="heatChk" type="checkbox" checked> Fire map</label>
     <span id="heatCaption"></span>
     <label for="heatYear">Year</label>
