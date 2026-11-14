@@ -162,6 +162,16 @@ outlined in the table, left out of the medians, and left out of the harmonizatio
   archives; checked against 10 July 2025, it agrees with the archive within 0.3%.
 - VIIRS outages are filled with MODIS (see section 12).
 
+### 13. Smaller downloads (`tools/deploy.sh`, `fetchWhole` in `app.js`)
+- The files the browser reads in one piece (`coarse.bin`, `countries.bin` and the world fire-map
+  months in `heat0/`) are also published gzip-compressed (`name.gz`), about 3x smaller: the
+  start-up file goes from 1.6 MB to 0.46 MB, a country's totals from 0.94 MB to 0.29 MB, a
+  fire-map month from about 0.17 MB to 0.11 MB (Play: about 54 MB down to 34 MB).
+- The browser unpacks them itself (`DecompressionStream`). If a `.gz` copy is missing (the app
+  run locally) or the browser is too old, it reads the plain file instead.
+- The compressed copies are made by `tools/deploy.sh` in the staged site only; the data folder
+  is unchanged. Files read by byte ranges (`tiles/`, `heat1/`) stay uncompressed.
+
 ### 12. Filling the VIIRS outage days (`tools/build_world.py`, `find_gaps`)
 Some days the VIIRS satellite sends little or no data. The build finds 87 such days
 between 2012 and 2026, for example 10-16 July and 24-29 July 2024, and in 2026: 10-12 March,

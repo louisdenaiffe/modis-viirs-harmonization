@@ -556,11 +556,26 @@ $('search').addEventListener('keydown', async e => {
 const data = { index: null, blockList: [], dayMonth: null, era: null, error: null };
 const REC = 9;                          // bytes per hotspot: lat u16, lon u16, day u16, frp u16, flags u8
 
+// Files read whole (not by byte range) are also published gzip-compressed (name + ".gz", made by
+// tools/deploy.sh): about 3x smaller to download, unpacked here by the browser. If the .gz copy
+// is missing (local copy of the app) or the browser cannot unpack it, the plain file is read.
+async function fetchWhole(url) {
+  if (typeof DecompressionStream === 'function') {
+    try {
+      const r = await fetch(url + '.gz');
+      if (r.ok) return await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+    } catch { /* fall back to the plain file */ }
+  }
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(url + ': HTTP ' + r.status);
+  return r.arrayBuffer();
+}
+
 const ready = (async () => {
   const r = await fetch('data/meta.json');
   if (!r.ok) throw new Error('data/meta.json not found');
   const ix = data.index = await r.json(), M = ix.months;
-  const cb = await (await fetch('data/coarse.bin')).arrayBuffer();
+  const cb = await fetchWhole('data/coarse.bin');
   data.blockList = ix.blocks.map(([la, lo], i) => ({
     la, lo, key: `${la}_${lo}`, tiles: null,
     mod: new Uint32Array(cb, i * 12 * M, M), vii: new Uint32Array(cb, i * 12 * M + 4 * M, M),
@@ -744,7 +759,7 @@ async function walk(sel, wantPoints, h, onProgress) {
 // country three runs of M floats: MODIS, VIIRS, harmonized.
 let countryTotalsP = null;
 function loadCountryTotals() {
-  if (!countryTotalsP) countryTotalsP = fetch('data/countries.bin').then(r => (r.ok ? r.arrayBuffer() : null)).then(buf => {
+  if (!countryTotalsP) countryTotalsP = fetchWhole('data/countries.bin').catch(() => null).then(buf => {
     if (!buf || buf.byteLength < 16) return null;
     const dv = new DataView(buf), n = dv.getUint32(0, true), M = dv.getUint32(4, true);
     if (M !== data.index.months || dv.getFloat64(8, true) !== data.index.hotspots || buf.byteLength !== 16 + n * 3 * M * 4) return null;
@@ -870,7 +885,7 @@ const heat0Cache = new Map();
 function getHeat0(m) {
   if (!heat0Cache.has(m)) {
     if (heat0Cache.size > 60) heat0Cache.delete(heat0Cache.keys().next().value);
-    heat0Cache.set(m, fetch(`data/heat0/${m}.bin`).then(r => r.arrayBuffer()));
+    heat0Cache.set(m, fetchWhole(`data/heat0/${m}.bin`));
   }
   return heat0Cache.get(m);
 }
