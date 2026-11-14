@@ -1,8 +1,13 @@
+import os
+import zipfile
+
 import pandas as pd
 import pytest
 
+from harmonize import ingest
 from harmonize.config import Config
-from harmonize.ingest import POINT_COLUMNS, apply_filters, detect_sensor, load_points
+from harmonize.ingest import (POINT_COLUMNS, apply_filters, detect_sensor, domain_from_filename,
+                              load_points)
 
 MODIS_HDR = ("latitude,longitude,brightness,scan,track,acq_date,acq_time,satellite,instrument,"
              "confidence,version,bright_t31,frp,daynight,type")
@@ -25,7 +30,8 @@ def write(tmp_path, name, hdr, rows):
 
 
 def cfg_for(tmp_path, **kw):
-    return Config(data_dir=tmp_path, out_dir=tmp_path / "out", **kw)
+    return Config(data_dir=tmp_path, out_dir=tmp_path / "out", cache_dir=tmp_path.parent /
+                  f"{tmp_path.name}_cache", **kw)
 
 
 def test_detect_sensor():
@@ -92,7 +98,7 @@ def test_brightness_columns_mapped(tmp_path):
     write(tmp_path, "v.csv", VIIRS_HDR, [viirs_row()])
     p = load_points(cfg_for(tmp_path))
     assert p["bright_mir_k"].tolist() == [320.5, 330.0]
-    assert p["bright_tir_k"].tolist() == [290.1, 290.0]
+    assert p["bright_tir_k"].tolist() == pytest.approx([290.1, 290.0])  # float32
 
 
 def test_missing_type_column_defaults_to_zero(tmp_path):
@@ -104,8 +110,9 @@ def test_missing_type_column_defaults_to_zero(tmp_path):
 
 
 def test_filters_type_and_confidence_configurable(tmp_path):
-    rows = [viirs_row(conf="l"), viirs_row(conf="n"), viirs_row(conf="h"),
-            viirs_row(conf="h", typ=2), viirs_row(conf="n", typ=3)]
+    # distinct positions: identical (source, lat, lon, time) would be de-duplicated
+    rows = [viirs_row(lat=40.1, conf="l"), viirs_row(lat=40.2, conf="n"), viirs_row(lat=40.3, conf="h"),
+            viirs_row(lat=40.4, conf="h", typ=2), viirs_row(lat=40.5, conf="n", typ=3)]
     write(tmp_path, "v.csv", VIIRS_HDR, rows)
     cfg = cfg_for(tmp_path)
     p = load_points(cfg)
@@ -131,3 +138,99 @@ def test_overlapping_files_deduplicated(tmp_path):
 def test_no_files_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         load_points(cfg_for(tmp_path))
+
+
+def test_overlap_dedupe_ignores_other_columns(tmp_path):
+    # same detection in two country files; a non-key column differs (version) -> still one point
+    write(tmp_path, "modis_2019_A.csv", MODIS_HDR, [modis_row(lat=41.5, lon=20.0, frp=5.0)])
+    write(tmp_path, "modis_2019_B.csv", MODIS_HDR,
+          [modis_row(lat=41.5, lon=20.0, frp=5.0).replace("61.03", "61.04"),
+           modis_row(lat=41.5, lon=20.0, sat="Aqua")])   # other source -> kept
+    cfg = cfg_for(tmp_path)
+    f = apply_filters(load_points(cfg), cfg)
+    assert len(f) == 2
+    assert f["source"].astype(str).tolist() == ["MODIS_TERRA", "MODIS_AQUA"]
+    assert f["source_file"].astype(str).tolist() == ["modis_2019_A.csv", "modis_2019_B.csv"]
+
+
+def test_dtypes_compact(tmp_path):
+    write(tmp_path, "m.csv", MODIS_HDR, [modis_row()])
+    write(tmp_path, "v.csv", VIIRS_HDR, [viirs_row()])
+    p = load_points(cfg_for(tmp_path))
+    assert p["latitude"].dtype == "float64" and p["longitude"].dtype == "float64"
+    for c in ("frp", "scan", "track", "bright_mir_k", "bright_tir_k"):
+        assert p[c].dtype == "float32", c
+    for c in ("source", "sensor", "daynight", "confidence_class", "source_file", "domain", "acq_date"):
+        assert isinstance(p[c].dtype, pd.CategoricalDtype), c
+    # categories survive concatenation of files with different category sets
+    assert set(p["source"].astype(str)) == {"MODIS_TERRA", "VIIRS_SNPP"}
+
+
+def test_load_columns_subset(tmp_path):
+    write(tmp_path, "v.csv", VIIRS_HDR, [viirs_row()])
+    cfg = cfg_for(tmp_path)
+    for _ in range(2):  # cold, then from cache
+        p = load_points(cfg, columns=["latitude", "source", "frp"])
+        assert list(p.columns) == ["source", "latitude", "frp"]
+    with pytest.raises(ValueError):
+        load_points(cfg, columns=["nope"])
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("modis_2019_United_States.csv", "United_States"),
+    ("viirs-snpp_2012_Greece.csv", "Greece"),
+    ("fire_archive_M-C61_12345.csv", "fire_archive_M-C61_12345"),
+    ("J1_VIIRS_C2_Global_7d.csv", "Global"),
+    ("sub/dir/modis_2023_Kazakhstan.csv", "Kazakhstan"),
+    ("all.zip/viirs-snpp_2019_Brazil.csv", "Brazil"),
+])
+def test_domain_from_filename(name, expected):
+    assert domain_from_filename(name) == expected
+
+
+def test_domain_column(tmp_path):
+    write(tmp_path, "modis_2019_United_States.csv", MODIS_HDR, [modis_row()])
+    p = load_points(cfg_for(tmp_path))
+    assert p["domain"].astype(str).tolist() == ["United_States"]
+
+
+def test_recursive_and_zip(tmp_path):
+    (tmp_path / "a" / "b").mkdir(parents=True)
+    write(tmp_path / "a" / "b", "modis_2019_X.csv", MODIS_HDR, [modis_row()])
+    with zipfile.ZipFile(tmp_path / "bundle.zip", "w") as zf:
+        zf.writestr("viirs-snpp_2019_Y.csv", "\n".join([VIIRS_HDR, viirs_row(), viirs_row(lat=41.0)]))
+        zf.writestr("viirs-snpp_2019_Z.csv", "\n".join([VIIRS_HDR, viirs_row(lat=42.0)]))
+        zf.writestr("README.txt", "not a csv")
+    p = load_points(cfg_for(tmp_path))
+    assert len(p) == 4
+    files = p["source_file"].astype(str).tolist()
+    assert files == ["a/b/modis_2019_X.csv", "bundle.zip/viirs-snpp_2019_Y.csv",
+                     "bundle.zip/viirs-snpp_2019_Y.csv", "bundle.zip/viirs-snpp_2019_Z.csv"]
+    assert p["domain"].astype(str).tolist() == ["X", "Y", "Y", "Z"]
+
+
+def test_cache_hit_and_invalidation_on_mtime(tmp_path, monkeypatch):
+    write(tmp_path, "v.csv", VIIRS_HDR, [viirs_row(frp=2.0)])
+    cfg = cfg_for(tmp_path)
+    assert load_points(cfg)["frp"].tolist() == [2.0]
+    assert len(list(cfg.cache_dir.glob("*.parquet"))) == 1
+
+    real = ingest.read_input
+    calls = []
+    monkeypatch.setattr(ingest, "read_input", lambda *a, **k: calls.append(a) or real(*a, **k))
+    assert load_points(cfg)["frp"].tolist() == [2.0]
+    assert calls == []                                  # warm: served from parquet
+
+    f = tmp_path / "v.csv"
+    st = os.stat(f)
+    f.write_text("\n".join([VIIRS_HDR, viirs_row(frp=3.0)]) + "\n")   # same size
+    os.utime(f, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
+    assert load_points(cfg)["frp"].tolist() == [3.0]
+    assert len(calls) == 1
+    assert len(list(cfg.cache_dir.glob("*.parquet"))) == 1            # stale entry replaced
+
+
+def test_cache_key_includes_confidence_thresholds(tmp_path):
+    write(tmp_path, "m.csv", MODIS_HDR, [modis_row(conf=30)])
+    assert load_points(cfg_for(tmp_path))["confidence_class"].tolist() == ["nominal"]
+    assert load_points(cfg_for(tmp_path, modis_conf_low_max=30))["confidence_class"].tolist() == ["low"]

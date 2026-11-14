@@ -1,119 +1,192 @@
-# Data contract (fixed before parallel work — do not change without the integrator)
+# Data contract v2: global harmonization
 
-All code lives in the `harmonize/` package; configuration is `harmonize.config.Config`.
-Constants (`METRICS`, `DAYNIGHT`, source codes) come from `harmonize/config.py`.
-Nothing may hard-code a country, a year or a file name. Input = every `*.csv` in `cfg.data_dir`.
+The goal is **any FIRMS files, anywhere on Earth, any years**. Typical inputs are per-country yearly
+CSVs (`modis_2019_Brazil.csv`), FIRMS "all countries" zips, or global yearly files. Mixed countries,
+years and sensors can sit in the same `data_dir`, and their extents and dates do not have to match.
 
-## 0. Module ownership and public functions
+The code lives in `harmonize/`. Settings are in `harmonize.config.Config`, and constants
+(`METRICS`, `DAYNIGHT`, `MODIS_CONFIGS`, source codes) are in `harmonize/config.py`. Nothing may
+hard-code a country, a year, a region or a file name.
+
+What changes from v1, and why:
+1. **Coverage is spatial and daily.** v1 treated a month as covered if any point existed anywhere,
+   and that breaks in two ways:
+   - With MODIS Italy 2025 and VIIRS Greece 2025 in the same folder, Italy's MODIS fires get
+     paired with VIIRS = 0.
+   - A month that VIIRS only partly covers (VIIRS starts on 2012-01-20) gets compared against a
+     full month of MODIS.
+2. **The factor varies by region.** Italy's 2025 factor over-estimates Greece by 11-57 %
+   depending on the metric. A single global ratio is now only the baseline.
+3. **Global volumes.** About 10-30 M points per year. Process data file by file with compact
+   dtypes, cache parsed files as parquet, and keep peak RAM under about 3 GB on the 1.4 GB test set.
+4. **The MODIS platform mix changes over time.** Terra and Aqua are combined where both cover a
+   tile-day, otherwise Terra-only or Aqua-only is used. The right factor is picked per tile-day.
+
+## 0. Module ownership
 
 | module | owner | public API |
 |---|---|---|
-| `harmonize/config.py` | integrator | `Config`, constants |
-| `harmonize/ingest.py` | A | `load_points(cfg) -> DataFrame` (§1, unfiltered), `apply_filters(points, cfg) -> DataFrame` |
-| `harmonize/aggregate.py` | A | `aggregate(points, cfg) -> DataFrame` (§2), `make_paired(agg, modis_source, cfg) -> DataFrame` (§3), `cell_id_for(lat, lon, cell_size_deg)`, `period_for(datetime_utc, time_step)` |
-| `harmonize/calibrate.py` | B | `MODELS`, `fit_model(name, x, y) -> dict`, `apply_model(params, x) -> ndarray`, `fit_all(paired_by_source, cfg) -> dict` (§4 JSON), `apply_coefficients(coef_json, metric, modis_source, daynight, x) -> ndarray` |
-| `harmonize/validate.py` | C | hold-out evaluation, writes `outputs/validation/*.csv` |
-| `harmonize/plots.py` | C | diagnostic PNGs into `outputs/plots/` |
-| `harmonize/pipeline.py` | integrator | `python -m harmonize.pipeline` runs end to end |
-| `tests/` | A (schema, aggregation), B/C may add | `pytest` |
+| `config.py`, `pipeline.py` | integrator | `Config`; `python -m harmonize.pipeline` |
+| `ingest.py` | A | `load_points(cfg, columns=None) -> DataFrame`, `apply_filters(points, cfg)`, `domain_from_filename(name) -> str` |
+| `coverage.py` (new) | A | `build_coverage(points_all, cfg) -> DataFrame` (§2), `tag_points(points, coverage, cfg) -> DataFrame` (adds §2 columns) |
+| `aggregate.py` | A | `aggregate(points, cfg, by_config=False) -> DataFrame` (§3), `make_paired(points_tagged, modis_source, cfg) -> DataFrame` (§4), `cell_id_for`, `period_for` |
+| `harmonized.py` (new) | A | `build_harmonized(points_tagged, coef, cfg) -> DataFrame` (§6). Calls B's `apply_coefficients`. |
+| `calibrate.py` | B | `MODELS`, `fit_model(name, paired, metric, cfg) -> dict`, `apply_model(params, modis_rows, metric) -> ndarray`, `fit_all(paired_by_source, cfg, training_meta=None) -> dict` (§5), `apply_coefficients(coef, metric, modis_rows, cfg=None, model=None) -> ndarray`, `stability_table(...)` |
+| `validate.py`, `plots.py`, `METHOD.md` | C | §7 |
+| `tests/` | each owner | `pytest -q` must stay green |
 
-## 1. Point table (output of `load_points`; written filtered as `outputs/hotspots_clean.csv`)
+## 1. Point table (`load_points`)
 
-One row per FIRMS detection. Detect the sensor from the columns, not the file name
-(MODIS has `brightness`/`bright_t31`; VIIRS has `bright_ti4`/`bright_ti5`).
+These are the v1 columns, and they all stay:
 
-| column | dtype | notes |
-|---|---|---|
-| `sensor` | str | `MODIS` or `VIIRS` |
-| `source` | str | `MODIS_TERRA`, `MODIS_AQUA`, `VIIRS_SNPP`, `VIIRS_NOAA20`, `VIIRS_NOAA21` |
-| `satellite_raw` | str | original `satellite` value (`Terra`, `Aqua`, `N`, `1`, `N20`, `2`, `N21`…) |
-| `latitude`, `longitude` | float | |
-| `datetime_utc` | datetime64[ns, UTC] | from `acq_date` + `acq_time`; `acq_time` is HHMM, may be int `136` or zero-padded string `"0136"` |
-| `acq_date` | str `YYYY-MM-DD` | kept as given (UTC date) |
-| `acq_time` | int | HHMM |
-| `daynight` | str | `D` / `N` |
-| `bright_mir_k` | float | MODIS `brightness` (21/22, ~4 µm) / VIIRS `bright_ti4` |
-| `bright_tir_k` | float | MODIS `bright_t31` (~11 µm) / VIIRS `bright_ti5` |
-| `frp` | float | MW |
-| `scan`, `track` | float | pixel size km |
-| `confidence_raw` | str | original value as string |
-| `confidence_class` | str | `low` / `nominal` / `high`. MODIS: `<= cfg.modis_conf_low_max` low, `>= cfg.modis_conf_high_min` high, else nominal. VIIRS: `l`/`n`/`h` (case-insensitive) |
-| `type` | int | FIRMS type (0 veg fire, 1 volcano, 2 static land, 3 offshore). Missing column (e.g. NRT files) -> 0 |
-| `version` | str | |
-| `source_file` | str | basename of the input CSV |
+`sensor, source, satellite_raw, latitude, longitude, datetime_utc, acq_date, acq_time, daynight,`
+`bright_mir_k, bright_tir_k, frp, scan, track, confidence_raw, confidence_class, type, version,`
+`source_file`
 
-`apply_filters`: keep `type in cfg.keep_types` and `confidence_class >= cfg.min_confidence`
-(ordering `config.CONFIDENCE_ORDER`). Drop exact duplicates across overlapping files.
+One new column:
+- `domain` (category): `domain_from_filename(source_file)`. It removes the sensor token, the year
+  token and the extension, so `modis_2019_Brazil.csv` and `viirs-snpp_2019_Brazil.csv` both become
+  `Brazil`. If nothing recognisable is left, it is the file stem. Validation uses it only as a
+  grouping label (leave-domain-out). Coverage does **not** use it.
 
-## 2. Aggregated table (output of `aggregate`; written as `outputs/aggregated.csv`)
+dtypes: floats are float32. `latitude` and `longitude` are float64, because cell edges need the
+precision. Strings with few distinct values are `category`. Accept `*.csv`, plus `*.zip`
+containing CSVs, recursively under `data_dir`. Cache each parsed input in `cfg.cache_dir` as
+parquet, keyed by absolute path, size and mtime.
 
-Long format, **sparse** (only rows with `n_hotspots > 0`), one row per
-`(source, cell_id, period, daynight)`.
+`apply_filters`: same as v1 (types, confidence). It also deduplicates on `(source, latitude,
+longitude, datetime_utc)`, because border points can appear in two country files.
 
-| column | dtype | notes |
-|---|---|---|
-| `source` | str | each point `source`, **plus** `MODIS_ALL` = Terra ∪ Aqua computed from the points (not by summing rows — matters for `fire_cell_days`) |
-| `cell_id` | str | `f"{iy}_{ix}"`, `iy = floor((lat + 90) / size)`, `ix = floor((lon + 180) / size)` |
-| `cell_lat`, `cell_lon` | float | cell **centre**: `-90 + (iy + 0.5) * size`, `-180 + (ix + 0.5) * size`, rounded to 6 dp |
-| `period` | str | month: `YYYY-MM`; day: `YYYY-MM-DD` (UTC) |
-| `period_start` | str `YYYY-MM-DD` | first day of the period |
-| `daynight` | str | `D`, `N`, and `ALL` (= D ∪ N, computed from points, not summed) |
-| `n_hotspots` | int | number of detections |
-| `fire_cell_days` | int | number of distinct UTC dates with >= 1 detection in that cell/period/daynight/source (1 when time_step = day) |
-| `frp_sum` | float | summed FRP, MW |
+## 2. Coverage
 
-## 3. Paired table (output of `make_paired(agg, modis_source, cfg)`)
+`build_coverage(points_all, cfg)` runs on **unfiltered** points, all types. It returns one row per
+`(source_file, source, cov_tile)` with `date_min` and `date_max` (the first and last `acq_date`
+of that file). `cov_tile = f"{iy}_{ix}"` at `cfg.coverage_tile_deg`, using the same formula as
+cell_id. A file covers every tile its points touch, every day from `date_min` to `date_max`. If
+several files of the same source cover a tile, the union of their date ranges is used.
 
-Wide, zero-filled join of one MODIS source against `cfg.viirs_reference`, on the **union**
-of `(cell_id, period, daynight)` keys where either sensor has a row (a cell-period seen by
-only one sensor gets 0 for the other). Restricted to periods that both sensors cover
-(a period is "covered" by a source if that source has at least one point of any type in it,
-i.e. coverage is computed before filtering — pass the coverage via the unfiltered points or
-an attribute; A decides and documents).
+`tag_points(points, coverage, cfg)` adds these columns to any points table:
+- `cov_tile`
+- `viirs_covered` (bool): `cfg.viirs_reference` covers this tile on this `acq_date`.
+- `terra_covered`, `aqua_covered` (bool)
+- `modis_config` (category): `MODIS_ALL` if Terra and Aqua both cover the tile-day, otherwise
+  `MODIS_TERRA` or `MODIS_AQUA`, or `NONE`.
 
-Columns: `cell_id, cell_lat, cell_lon, period, period_start, daynight,`
-`modis_n_hotspots, modis_fire_cell_days, modis_frp_sum,`
-`viirs_n_hotspots, viirs_fire_cell_days, viirs_frp_sum`, plus `modis_source` (str).
+The tagging must be vectorized, for example a merge on `(source, cov_tile)` followed by date
+comparisons, or interval logic. It must not loop over rows in Python.
 
-## 4. Calibration coefficients JSON (`outputs/calibration_coefficients.json`)
+## 3. Aggregated table (`aggregate`)
+
+The table is long and sparse: only rows with `n_hotspots > 0`, one row per
+`(source, cell_id, period, daynight)`. `source` takes the point sources plus `MODIS_ALL`
+(Terra ∪ Aqua). `daynight` takes D, N, and ALL (= D ∪ N). These are as in v1.
+
+Columns:
+- `source, cell_id, cell_lat, cell_lon, period, period_start, daynight`
+- `n_hotspots, fire_cell_days, frp_sum`: as in v1.
+- New per-row features, from that source's points only, so they can be computed from MODIS alone
+  in a back-cast year:
+  - `frp_mean` (MW per detection)
+  - `frp_p90` (90th percentile of FRP)
+  - `scan_mean` (km, along-scan pixel size, which is a proxy for view angle)
+  - `bright_mir_mean`
+  - `n_terra`, `n_aqua` (detections from each platform; 0 for VIIRS)
+- `domain`: the most common domain of the row's points.
+
+`by_config=True` adds `modis_config` to the key. Used by §6.
+
+## 4. Paired table (`make_paired(points_tagged, modis_source, cfg)`)
+
+`modis_source` is `MODIS_ALL`, `MODIS_AQUA` or `MODIS_TERRA`. Keep only the points on tile-days
+covered by **both** sides:
+- `MODIS_ALL`: `modis_config == MODIS_ALL` and `viirs_covered`.
+- `MODIS_AQUA`: `aqua_covered` and `viirs_covered`.
+- `MODIS_TERRA`: `terra_covered` and `viirs_covered`.
+
+For VIIRS points the same rule is evaluated with their own tile-date columns. Aggregate each side
+(§3), then outer-join on `(cell_id, period, daynight)` and fill missing values with 0.
+
+Columns:
+- `cell_id, cell_lat, cell_lon, period, period_start, daynight, domain, modis_source`
+- `modis_<m>`, `viirs_<m>` for each m in `n_hotspots, fire_cell_days, frp_sum`
+- `modis_frp_mean, modis_frp_p90, modis_scan_mean, modis_bright_mir_mean, modis_n_terra, modis_n_aqua`
+  (NaN where MODIS = 0)
+- `viirs_frp_mean` (for information only, never used as a predictor)
+- `n_days_covered`: number of jointly covered days in that cell's coverage tile and period. A
+  partly covered month carries its true exposure.
+
+## 5. Calibration (B)
+
+**A model maps MODIS-side rows to VIIRS-equivalent values.** It may use region (via `cell_lat`
+and `cell_lon`), season (via `period` and latitude), and MODIS-side features. It must never use
+VIIRS columns at apply time. `apply_model(params, modis_rows, metric)` takes rows shaped like §3
+MODIS rows (columns `cell_lat, cell_lon, period, daynight, <metric>, frp_mean, ...`) and returns
+an ndarray of length `len(modis_rows)`, ≥ 0, with NaN-safe handling.
+
+Required models:
+- `ratio_global`: the v1 ratio of totals, y = k·x. This is the baseline.
+- `ratio_regional`: k depends on the cell's position in nested tiles `cfg.region_levels_deg`,
+  coarse to fine, with empirical-Bayes shrinkage of each tile's k toward its parent. A tile with
+  little data (or none, such as a region never seen in training) falls back to its parent and
+  ultimately to global.
+- `glm_features`: a Poisson GLM on aggregated units (for example 5° tile × month × daynight). It
+  fits log E[V] = log M + β·z, where z contains only MODIS-observable features such as log
+  `frp_mean`, `scan_mean`, terra share, |lat|, a hemisphere-aware season and D/N. It transfers to
+  unseen regions because it needs no lookup table.
+- `glm_regional`: `glm_features` plus a shrunken regional residual.
+
+B may add models. Every model's `params` must be JSON-serialisable and must fully define the
+predictions. `k` is clipped to a sane range, stored in the params. `fire_cell_days` predictions
+are capped at the number of days in the period.
+
+**Coefficients JSON** (`calibration_coefficients.json`, `schema_version: 2`):
 
 ```json
-{
-  "schema_version": 1,
-  "created_utc": "...",
-  "config": { ...Config.to_dict()... },
-  "training_data": {"source_files": [...], "periods": ["2025-01", ...], "n_cells": 0},
-  "recommended": {"metric": "fire_cell_days", "model": "loglog", "modis_source": "MODIS_ALL",
-                  "fit_level": "cell_period", "reason": "..."},
-  "coefficients": [
-    {"metric": "n_hotspots", "model": "ratio", "modis_source": "MODIS_ALL", "daynight": "D",
-     "fit_level": "cell_period", "params": {"k": 5.1}, "n_train": 1234,
-     "fit_stats": {"r2_log": 0.0, "bias_pct": 0.0}}
-  ]
-}
+{"schema_version": 2, "created_utc": "...", "config": {},
+ "training_data": {"source_files": [], "domains": [], "periods": [], "years": []},
+ "recommended": {"metric": "...", "model": "...", "reason": "..."},
+ "coefficients": [{"metric": "...", "model": "...", "modis_source": "MODIS_ALL|MODIS_AQUA|MODIS_TERRA",
+                   "daynight": "D|N|ALL", "params": {}, "n_train": 0}]}
 ```
 
-Model `params` (B may add models; each must be fully described by `params` so it can be
-applied on another year without refitting):
-- `ratio`: `{"k"}` → `y = k * x`
-- `loglog`: `{"a", "b", "offset", "smearing"}` → `y = max(0, smearing * exp(a) * (x + offset) ** b - offset)`
+`apply_coefficients(coef, metric, modis_rows, cfg=None, model=None)` dispatches each row on
+`modis_rows["source"]`, which is the MODIS configuration, and on `daynight`. A missing D or N
+entry falls back to ALL. A missing `MODIS_TERRA` or `MODIS_AQUA` entry falls back to `MODIS_ALL`
+with a warning.
 
-`apply_coefficients` looks up `(metric, model, modis_source, daynight)`; if the D/N entry is
-missing it falls back to `daynight = "ALL"`. Coefficients are only valid for the
-`cell_size_deg` / `time_step` recorded in `config` — warn on mismatch.
+## 6. harmonized.csv (`build_harmonized`, A)
 
-## 5. harmonized.csv (`outputs/harmonized.csv`, built by the integrator)
+One row per `(cell_id, period, daynight)` for the recommended metric.
 
-For the recommended metric (column `metric` added), one row per
-`(cell_id, period, daynight)` in the union of MODIS_ALL and VIIRS keys:
-`cell_id, cell_lat, cell_lon, period, daynight, metric, modis_raw, viirs_raw,`
-`modis_as_viirs_equivalent, harmonized_value, source_flag`
+| column | meaning |
+|---|---|
+| `cell_id, cell_lat, cell_lon, period, daynight, domain, metric` | keys |
+| `viirs_raw` | aggregate of VIIRS points (NaN if VIIRS covers none of this cell's tile-days in the period) |
+| `modis_raw` | aggregate of all MODIS points (NaN if MODIS covers none) |
+| `modis_as_viirs_equivalent` | Σ over MODIS configs of `apply_coefficients` on MODIS points from that config, all days |
+| `harmonized_value` | `viirs_raw` (on VIIRS-covered days) + `apply_coefficients` on MODIS points from days **not** covered by VIIRS |
+| `source_flag` | `VIIRS` (every MODIS-covered day is also VIIRS-covered), `MODIS_CALIBRATED` (no VIIRS-covered day), `MIXED` (partly covered period) |
+| `viirs_days`, `modis_only_days` | days in the period covered by VIIRS, and days covered only by MODIS, in this cell's tile |
 
-- `source_flag = "VIIRS"` and `harmonized_value = viirs_raw` when the period is covered by VIIRS;
-- `source_flag = "MODIS_CALIBRATED"` and `harmonized_value = modis_as_viirs_equivalent` otherwise (back-cast years).
-- `viirs_raw` is NaN where VIIRS does not cover the period; `modis_raw` NaN where MODIS doesn't.
+Notes:
+- For `fire_cell_days`, summing over days with different configs is exact, because the days do not overlap.
+- Cap `harmonized_value` for `fire_cell_days` at the number of days in the period.
+- Write `harmonized.csv`, and `harmonized.parquet` too if there are more than 1 M rows.
 
-## Validation (C)
+## 7. Validation (C)
 
-C imports only `fit_model` / `apply_model` (and the MODELS list) from B and runs its own
-folds and metrics. C never reads `fit_stats` from the JSON.
+C imports only `MODELS`, `fit_model` and `apply_model` from B, and builds its own folds and scores.
+
+Hold-out schemes:
+- leave-one-domain-out (country)
+- spatial blocks (10° tiles, grouped)
+- leave-one-year-out, when at least 2 years are present
+- leave-one-month-out (LOMO)
+
+Scores for each metric × model × modis_source × daynight:
+- per domain-year: bias of the annual total, R² and Spearman of the monthly totals
+- the distribution of those across domains: median |bias|, 90th percentile |bias|, worst case
+- the pooled global bias
+
+Baselines: raw MODIS and `ratio_global`. The selection criterion is the 90th percentile of
+|per-domain bias| under leave-one-domain-out, because transfer to unseen regions is the goal.

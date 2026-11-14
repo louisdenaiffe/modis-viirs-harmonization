@@ -3,3 +3,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .directory
+data_global/
+outputs_global/*
+!outputs_global/calibration_coefficients.json
+!outputs_global/validation/
+!outputs_global/plots/
+*.parquet
+.cache/

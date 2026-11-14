@@ -2,13 +2,19 @@
 
 make_plots(paired_by_source, harmonized_df_or_None, coef_json_or_None, cfg) -> list[Path]
 
-* scatter_modis_vs_viirs.png   cell-period MODIS vs VIIRS per metric (log axes, +1), with
-                               fitted curves (from coef_json if given, else in-sample fits)
-* monthly_before_after.png     national monthly totals: raw MODIS vs VIIRS (before) and
-                               MODIS-as-VIIRS-equivalent vs VIIRS (after)
-* monthly_ratio.png            monthly VIIRS/MODIS ratio by day/night and by Aqua vs Terra
-* validation_oof_monthly.png   (if outputs/validation/monthly_oof.csv exists) out-of-fold
-                               monthly totals, leave-one-month-out
+* map_ratio_and_k.png         (a) per-tile VIIRS/MODIS ratio (observed, in-sample) and the
+                              recommended model's effective k = sum(pred)/sum(MODIS) on the
+                              same tiles; lon/lat scatter, no basemap dependency.
+* domain_bias_lodo.png        (b) per-domain-year bias of the annual total under
+                              leave-one-domain-out: ratio_global vs the best other model.
+* monthly_by_domain_lodo.png  (c) small multiples per domain: VIIRS vs raw MODIS vs
+                              out-of-fold calibrated (leave-one-domain-out).
+* scatter_modis_vs_viirs.png  (d) cell-period MODIS vs VIIRS density (log axes, +1).
+* harmonized_series.png       global monthly harmonized series (only if harmonized given).
+
+(b) and (c) read ``cfg.out_dir/validation/{summary,domain_scores,monthly_oof}.csv``
+written by :func:`harmonize.validate.run_validation`; they are skipped if absent.
+A MODIS-only back-cast run (no paired table) returns [].
 """
 from __future__ import annotations
 
@@ -20,16 +26,19 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
+from matplotlib.colors import LinearSegmentedColormap, LogNorm  # noqa: E402
 
 from .config import METRICS, MODIS_ALL, Config  # noqa: E402
 
-# colorblind-safe categorical slots (validated set, first three hues) + neutral ink
+# colorblind-safe categorical slots (validated set, fixed order) + neutral ink
 C_BLUE, C_ORANGE, C_AQUA = "#2a78d6", "#eb6834", "#1baf7a"
 C_GREY, C_INK, C_MUTED = "#8a8985", "#0b0b0b", "#52514e"
-MODEL_COLORS = [C_BLUE, C_ORANGE, C_AQUA, "#e87ba4", "#6250d6"]
+SEQ = LinearSegmentedColormap.from_list("seq_blue", ["#dce9f8", "#7fb0ea", "#2a78d6", "#123f7a"])
 
 UNITS = {"n_hotspots": "detections", "fire_cell_days": "fire cell-days", "frp_sum": "MW"}
 LABELS = {"n_hotspots": "Hotspot count", "fire_cell_days": "Fire cell-days", "frp_sum": "FRP sum"}
+MAP_TILE_DEG = 2.0
+MAP_MIN_MODIS = 20.0          # tiles with less MODIS signal than this are not mapped (ratio too noisy)
 
 plt.rcParams.update({
     "figure.dpi": 130, "savefig.dpi": 130, "font.size": 9.5, "axes.titlesize": 10.5,
@@ -40,256 +49,284 @@ plt.rcParams.update({
 })
 
 
-# ---------------------------------------------------------------- model evaluation
-def _eval_params(model: str, params: dict, x: np.ndarray) -> np.ndarray | None:
-    """Evaluate schema §4 params (ratio / loglog) or defer to B's apply_model."""
-    x = np.asarray(x, float)
-    if model == "ratio" and "k" in params:
-        return params["k"] * x
-    if model == "loglog" and {"a", "b"} <= set(params):
-        off, sm = params.get("offset", 1.0), params.get("smearing", 1.0)
-        return np.maximum(0.0, sm * np.exp(params["a"]) * (x + off) ** params["b"] - off)
-    try:
-        from .calibrate import apply_model
-        return np.asarray(apply_model({"model": model, **params}, x), float)
-    except Exception:
-        try:
-            from .calibrate import apply_model
-            return np.asarray(apply_model(params, x), float)
-        except Exception:
-            return None
+# ---------------------------------------------------------------- helpers
+def _read_val(cfg: Config, name: str) -> pd.DataFrame | None:
+    p = cfg.out_dir / "validation" / f"{name}.csv"
+    if not p.exists():
+        return None
+    df = pd.read_csv(p)
+    return df if not df.empty else None
 
 
-def _curves(paired: pd.DataFrame, metric: str, coef_json: dict | None, source: str,
-            daynight: str = "ALL") -> dict[str, tuple[str, dict]]:
-    """{label: (model, params)} for the curves to draw."""
-    out = {}
-    if coef_json:
-        for c in coef_json.get("coefficients", []):
-            if ((c["metric"], c["modis_source"], c["daynight"]) == (metric, source, daynight)
-                    and c.get("fit_level", "cell_period") == "cell_period"):
-                out[c["model"]] = (c["model"], {"model": c["model"], **c["params"]})
-        if out:
-            return out
+def _recommended(coef_json: dict | None, cfg: Config) -> tuple[str, str]:
+    """(metric, model): coef JSON recommendation, else rank 1 of my validation summary."""
+    rec = (coef_json or {}).get("recommended") or {}
+    if rec.get("metric") and rec.get("model"):
+        return rec["metric"], rec["model"]
+    s = _read_val(cfg, "summary")
+    if s is not None:
+        s = s[(s["modis_source"] == MODIS_ALL) & (s["daynight"] == "ALL") & (s["rank_overall"] == 1)]
+        if not s.empty:
+            return s.iloc[0]["metric"], s.iloc[0]["model"]
+    return "n_hotspots", "ratio_global"
+
+
+def _best_other(summary: pd.DataFrame | None, metric: str, src: str = MODIS_ALL) -> str | None:
+    """Best model under leave-domain-out for a metric, excluding the two baselines."""
+    if summary is None:
+        return None
+    s = summary[(summary["metric"] == metric) & (summary["modis_source"] == src)
+                & (summary["daynight"] == "ALL")
+                & ~summary["model"].isin(["raw_modis", "ratio_global"])]
+    return None if s.empty else s.sort_values("rank_in_metric").iloc[0]["model"]
+
+
+def _model_params(paired, metric, model, coef_json, cfg):
+    """Params for (metric, model, MODIS_ALL, ALL): from coef JSON, else in-sample fit."""
     from .validate import get_backend
-    names, fit, _apply, _ = get_backend()
-    d = paired[paired["daynight"] == daynight]
-    for m in names:
-        try:
-            p = fit(m, d[f"modis_{metric}"].to_numpy(float), d[f"viirs_{metric}"].to_numpy(float))
-            out[f"{m} (in-sample)"] = (m, p)
-        except Exception:
-            pass
-    return out
-
-
-def _predict(model: str, params: dict, x) -> np.ndarray | None:
-    try:
-        from .calibrate import apply_model
-        return np.asarray(apply_model(params, x), float)
-    except Exception:
-        return _eval_params(model, params, x)
-
-
-def _monthly(df: pd.DataFrame, cols: list[str], daynight: str = "ALL") -> pd.DataFrame:
-    d = df[df["daynight"] == daynight].copy()
-    d["month"] = d["period"].astype(str).str[:7]
-    return d.groupby("month")[cols].sum().sort_index()
-
-
-def _month_axis(ax, months):
-    ax.set_xticks(range(len(months)))
-    ax.set_xticklabels([m[2:] if len(months) > 14 else m[5:] for m in months],
-                       rotation=0 if len(months) <= 14 else 90)
-    ax.set_xlabel("Month" if len(months) <= 14 else "Month (YY-MM)")
-
-
-# ---------------------------------------------------------------- figures
-def plot_scatter(paired: pd.DataFrame, coef_json, path: Path, source: str = MODIS_ALL):
-    fig, axes = plt.subplots(1, len(METRICS), figsize=(4.2 * len(METRICS), 4.1))
+    for c in (coef_json or {}).get("coefficients", []):
+        if (c.get("metric"), c.get("model"), c.get("modis_source"), c.get("daynight")) == (
+                metric, model, MODIS_ALL, "ALL"):
+            return c["params"], "coefficients JSON"
+    names, fit, apply, _ = get_backend()
+    if model not in names:
+        return None, None
     d = paired[paired["daynight"] == "ALL"]
+    return fit(model, d, metric, cfg), "in-sample fit"
+
+
+def _apply(params, rows, metric):
+    from .validate import get_backend
+    _, _, apply, _ = get_backend()
+    return np.asarray(apply(params, rows, metric), float)
+
+
+def _save(fig, path):
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+# ---------------------------------------------------------------- (a) maps
+def plot_map(paired: pd.DataFrame, coef_json, cfg: Config, path: Path) -> Path | None:
+    from .validate import modis_rows
+    metric, model = _recommended(coef_json, cfg)
+    d = paired[paired["daynight"] == "ALL"]
+    x = np.nan_to_num(d[f"modis_{metric}"].to_numpy(float))
+    y = d[f"viirs_{metric}"].to_numpy(float)
+    ty = np.floor(d["cell_lat"].to_numpy(float) / MAP_TILE_DEG) * MAP_TILE_DEG + MAP_TILE_DEG / 2
+    tx = np.floor(d["cell_lon"].to_numpy(float) / MAP_TILE_DEG) * MAP_TILE_DEG + MAP_TILE_DEG / 2
+    t = pd.DataFrame({"lat": ty, "lon": tx, "x": x, "y": y})
+    params, how = None, None
+    try:
+        params, how = _model_params(paired, metric, model, coef_json, cfg)
+    except Exception:  # noqa: BLE001 - map of k is optional
+        params = None
+    t["p"] = 0.0
+    if params is not None:
+        pos = x > 0
+        try:
+            t.loc[pos, "p"] = _apply(params, modis_rows(d[pos], MODIS_ALL), metric)
+        except Exception:  # noqa: BLE001
+            params = None
+    g = t.groupby(["lat", "lon"], as_index=False)[["x", "y", "p"]].sum()
+    g = g[g["x"] >= MAP_MIN_MODIS]
+    if g.empty:
+        return None
+    g["ratio"] = g["y"] / g["x"]
+    g["k"] = g["p"] / g["x"]
+    vals = g["ratio"].to_numpy()
+    norm = LogNorm(vmin=max(np.nanpercentile(vals, 2), 0.1), vmax=np.nanpercentile(vals, 98))
+    panels = [("ratio", f"Observed VIIRS / MODIS ratio ({LABELS[metric].lower()})")]
+    if params is not None:
+        panels.append(("k", f"Model k = predicted / MODIS: {model} ({how})"))
+    lon_rng = g["lon"].max() - g["lon"].min() + MAP_TILE_DEG
+    lat_rng = g["lat"].max() - g["lat"].min() + MAP_TILE_DEG
+    w = 11.0
+    h = max(2.5, min(5.5, w * lat_rng / max(lon_rng, 1))) * len(panels) + 0.8
+    fig, axes = plt.subplots(len(panels), 1, figsize=(w, h), squeeze=False)
+    ms = max(2.0, (72 * w * MAP_TILE_DEG / max(lon_rng, 1)) ** 2 * 0.55)
+    for ax, (col, title) in zip(axes[:, 0], panels):
+        sc = ax.scatter(g["lon"], g["lat"], c=g[col].clip(norm.vmin, norm.vmax), cmap=SEQ,
+                        norm=norm, marker="s", s=ms, linewidths=0)
+        ax.set_title(title, loc="left")
+        ax.set_xlabel("Longitude [deg E]")
+        ax.set_ylabel("Latitude [deg N]")
+        ax.set_aspect("equal", adjustable="datalim")
+        cb = fig.colorbar(sc, ax=ax, shrink=0.85, pad=0.01)
+        cb.set_label("VIIRS-equivalent per MODIS unit [-] (log)")
+    fig.suptitle(f"{MAP_TILE_DEG:g} deg tiles, MODIS Terra+Aqua, day+night; tiles with MODIS "
+                 f"< {MAP_MIN_MODIS:g} {UNITS[metric]} omitted", x=0.01, ha="left",
+                 fontsize=9, color=C_MUTED)
+    fig.tight_layout()
+    return _save(fig, path)
+
+
+# ---------------------------------------------------------------- (b) per-domain bias bars
+def plot_domain_bias(cfg: Config, path: Path) -> Path | None:
+    ds, summ = _read_val(cfg, "domain_scores"), _read_val(cfg, "summary")
+    if ds is None:
+        return None
+    ds = ds[(ds["scheme"] == "leave_domain_out") & (ds["modis_source"] == MODIS_ALL)
+            & (ds["daynight"] == "ALL")]
+    if ds.empty:
+        return None
+    metrics = [m for m in METRICS if m in set(ds["metric"])]
+    labels = (ds[["domain", "year"]].drop_duplicates().sort_values(["domain", "year"])
+              .astype(str).agg(" ".join, axis=1).tolist())
+    ypos = np.arange(len(labels))
+    fig, axes = plt.subplots(1, len(metrics), figsize=(3.9 * len(metrics), 0.24 * len(labels) + 1.8),
+                             sharey=True, squeeze=False)
+    for ax, metric in zip(axes[0], metrics):
+        other = _best_other(summ, metric)
+        pairs = [("ratio_global", C_BLUE)] + ([(other, C_ORANGE)] if other else [])
+        bh = 0.8 / len(pairs)
+        for i, (mod, col) in enumerate(pairs):
+            s = ds[(ds["metric"] == metric) & (ds["model"] == mod)].copy()
+            s["lab"] = s["domain"].astype(str) + " " + s["year"].astype(str)
+            v = s.set_index("lab")["bias_pct"].reindex(labels).to_numpy()
+            p90 = np.nanpercentile(np.abs(v), 90) if np.isfinite(v).any() else np.nan
+            ax.barh(ypos + (i - (len(pairs) - 1) / 2) * bh, v, height=bh * 0.9, color=col,
+                    label=f"{mod} (p90 |bias| {p90:.0f} %)")
+        ax.axvline(0, color=C_INK, lw=0.8)
+        ax.set_title(LABELS[metric])
+        ax.set_xlabel("Bias of annual total [%]")
+        ax.legend(fontsize=7.5, loc="upper center", bbox_to_anchor=(0.5, -0.07 * 24 / max(len(labels), 8)))
+        ax.grid(axis="y", visible=False)
+    axes[0, 0].set_yticks(ypos)
+    axes[0, 0].set_yticklabels(labels, fontsize=8)
+    axes[0, 0].invert_yaxis()
+    fig.suptitle("Leave-one-domain-out: each country predicted by a model fitted on the others "
+                 "(back-cast mode, MODIS Terra+Aqua, day+night)", x=0.01, ha="left",
+                 fontweight="bold", fontsize=10)
+    fig.tight_layout()
+    return _save(fig, path)
+
+
+# ---------------------------------------------------------------- (c) monthly small multiples
+def plot_domain_monthly(cfg: Config, coef_json, path: Path) -> Path | None:
+    mo, summ = _read_val(cfg, "monthly_oof"), _read_val(cfg, "summary")
+    if mo is None:
+        return None
+    metric, model = _recommended(coef_json, cfg)
+    mo = mo[(mo["scheme"] == "leave_domain_out") & (mo["modis_source"] == MODIS_ALL)
+            & (mo["daynight"] == "ALL") & (mo["metric"] == metric)]
+    if model not in set(mo["model"]):
+        model = _best_other(summ, metric) or "ratio_global"
+    cal = mo[mo["model"] == model]
+    if cal.empty:
+        return None
+    years = sorted(int(v) for v in cal["year"].unique())
+    yi = {y: i for i, y in enumerate(years)}          # years side by side, no empty gap years
+    cal = cal.assign(t=cal["year"].map(yi) * 13 + cal["month"])
+    doms = sorted(cal["domain"].astype(str).unique())
+    nc = min(4, len(doms))
+    nr = int(np.ceil(len(doms) / nc))
+    fig, axes = plt.subplots(nr, nc, figsize=(3.6 * nc, 2.4 * nr + 0.9), squeeze=False)
+    for ax, dom in zip(axes.ravel(), doms):
+        s = cal[cal["domain"].astype(str) == dom].sort_values("t")
+        for yr, sy in s.groupby("year"):        # one segment per year: no line across gaps
+            first = yr == s["year"].min()
+            ax.plot(sy["t"], sy["obs"], color=C_BLUE, lw=2, label="VIIRS observed" if first else None)
+            ax.plot(sy["t"], sy["raw_modis"], color=C_GREY, lw=1.4, ls="--",
+                    label="raw MODIS" if first else None)
+            ax.plot(sy["t"], sy["pred"], color=C_ORANGE, lw=1.6, marker="o", ms=3,
+                    label=f"{model} (out-of-fold)" if first else None)
+        b = 100 * (s["pred"].sum() - s["obs"].sum()) / s["obs"].sum() if s["obs"].sum() > 0 else np.nan
+        ax.set_title(f"{dom}  (bias {b:+.0f} %)", fontsize=9.5)
+        ax.ticklabel_format(axis="y", style="sci", scilimits=(-3, 4))
+        ax.set_xticks([yi[y] * 13 + 6.5 for y in years])
+        ax.set_xticklabels([str(y) for y in years])
+        ax.grid(axis="x", visible=False)
+    for ax in axes.ravel()[len(doms):]:
+        ax.set_visible(False)
+    for ax in axes[:, 0]:
+        ax.set_ylabel(f"Monthly total [{UNITS[metric]}]")
+    h, lab = axes[0, 0].get_legend_handles_labels()
+    fig.legend(h, lab, loc="upper right", ncol=3, fontsize=8.5)
+    fig.suptitle(f"{LABELS[metric]} per domain, leave-one-domain-out (back-cast mode)",
+                 x=0.01, ha="left", fontweight="bold")
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    return _save(fig, path)
+
+
+# ---------------------------------------------------------------- (d) scatter
+def plot_scatter(paired: pd.DataFrame, path: Path, source: str = MODIS_ALL) -> Path:
+    d = paired[paired["daynight"] == "ALL"]
+    fig, axes = plt.subplots(1, len(METRICS), figsize=(4.4 * len(METRICS), 4.2))
     for ax, metric in zip(axes, METRICS):
-        x, y = d[f"modis_{metric}"].to_numpy(float), d[f"viirs_{metric}"].to_numpy(float)
-        ax.scatter(x + 1, y + 1, s=9, alpha=0.35, color=C_GREY, edgecolor="none",
-                   label=f"cell-months (n={len(d)})")
+        x = np.nan_to_num(d[f"modis_{metric}"].to_numpy(float))
+        y = np.nan_to_num(d[f"viirs_{metric}"].to_numpy(float))
+        hb = ax.hexbin(x + 1, y + 1, xscale="log", yscale="log", bins="log", mincnt=1,
+                       gridsize=55, cmap=SEQ, linewidths=0)
         hi = max(x.max(), y.max()) + 1
-        xs = np.geomspace(1, hi, 200)
+        xs = np.geomspace(1, hi, 100)
         ax.plot(xs, xs, color=C_MUTED, lw=1, ls=":", label="1:1 (no calibration)")
-        for (label, (model, params)), col in zip(_curves(paired, metric, coef_json, source).items(),
-                                                 MODEL_COLORS):
-            yp = _predict(model, params, xs - 1)
-            if yp is not None:
-                ax.plot(xs, yp + 1, color=col, label=label)
-        ax.set_xscale("log"); ax.set_yscale("log")
-        ax.set_xlabel(f"MODIS ({source}) {LABELS[metric].lower()} + 1\n[{UNITS[metric]}]")
+        k = y.sum() / x.sum() if x.sum() > 0 else np.nan
+        ax.plot(xs, k * (xs - 1) + 1, color=C_ORANGE, lw=1.6,
+                label=f"ratio of totals k = {k:.2f}")
+        ax.set_xlabel(f"MODIS {LABELS[metric].lower()} + 1 [{UNITS[metric]}]")
         ax.set_ylabel(f"VIIRS {LABELS[metric].lower()} + 1 [{UNITS[metric]}]")
         ax.set_title(LABELS[metric])
-        ax.legend(fontsize=7.5, loc="upper left", framealpha=0.85, frameon=True, edgecolor="none")
-    fig.suptitle("Cell-period MODIS vs VIIRS (day+night, log axes)", x=0.01, ha="left",
-                 fontweight="bold")
+        ax.legend(fontsize=7.5, loc="upper left")
+        fig.colorbar(hb, ax=ax, pad=0.01).set_label("cell-periods per bin (log)")
+    fig.suptitle(f"Cell-period MODIS ({source}) vs VIIRS, day+night, n = {len(d):,} "
+                 "(includes VIIRS-only and MODIS-only cells)", x=0.01, ha="left", fontweight="bold")
     fig.tight_layout()
-    fig.savefig(path); plt.close(fig)
+    return _save(fig, path)
 
 
-def plot_before_after(paired: pd.DataFrame, harmonized, coef_json, path: Path,
-                      source: str = MODIS_ALL):
-    cols = [f"modis_{m}" for m in METRICS] + [f"viirs_{m}" for m in METRICS]
-    mon = _monthly(paired, cols)
-    months = list(mon.index)
-    rec = (coef_json or {}).get("recommended", {})
-    fig, axes = plt.subplots(2, len(METRICS), figsize=(4.4 * len(METRICS), 6.4), sharex=True)
-    for j, metric in enumerate(METRICS):
-        ax = axes[0, j]
-        ax.plot(range(len(months)), mon[f"viirs_{metric}"], color=C_BLUE, marker="o", ms=4,
-                label="VIIRS (observed)")
-        ax.plot(range(len(months)), mon[f"modis_{metric}"], color=C_ORANGE, marker="s", ms=4,
-                label=f"MODIS raw ({source})")
-        ax.set_title(f"{LABELS[metric]}: before")
-        ax.set_ylabel(f"National monthly total [{UNITS[metric]}]")
-        ax.legend(fontsize=8)
-        # after
-        ax = axes[1, j]
-        after, label = None, None
-        if harmonized is not None and "metric" in harmonized and (harmonized["metric"] == metric).any():
-            h = harmonized[(harmonized["metric"] == metric) & (harmonized["daynight"] == "ALL")].copy()
-            h["month"] = h["period"].astype(str).str[:7]
-            after = h.groupby("month")["modis_as_viirs_equivalent"].sum().reindex(months)
-            label = "MODIS as VIIRS-equivalent (harmonized.csv)"
-        else:
-            curves = _curves(paired, metric, coef_json, source)
-            if curves:
-                pick = rec.get("model") if rec.get("model") in curves else None
-                key = pick or ("loglog" if "loglog" in curves else next(iter(curves)))
-                if key not in curves:
-                    key = next(k for k in curves if k.startswith(key)) if any(
-                        k.startswith(key) for k in curves) else next(iter(curves))
-                model, params = curves[key]
-                d = paired[paired["daynight"] == "ALL"].copy()
-                d["month"] = d["period"].astype(str).str[:7]
-                yp = _predict(model, params, d[f"modis_{metric}"].to_numpy(float))
-                if yp is not None:
-                    d["p"] = yp
-                    after = d.groupby("month")["p"].sum().reindex(months)
-                    label = f"MODIS as VIIRS-equivalent ({key})"
-        ax.plot(range(len(months)), mon[f"viirs_{metric}"], color=C_BLUE, marker="o", ms=4,
-                label="VIIRS (observed)")
-        if after is not None:
-            ax.plot(range(len(months)), after.to_numpy(), color=C_AQUA, marker="D", ms=4,
-                    label=label)
-        ax.set_title(f"{LABELS[metric]}: after calibration")
-        ax.set_ylabel(f"National monthly total [{UNITS[metric]}]")
-        ax.legend(fontsize=8)
-        _month_axis(ax, months)
-    fig.suptitle("National monthly series, before and after calibration (in-sample)",
-                 x=0.01, ha="left", fontweight="bold")
+# ---------------------------------------------------------------- harmonized series
+def plot_harmonized(h: pd.DataFrame, path: Path) -> Path | None:
+    if h is None or h.empty or "harmonized_value" not in h:
+        return None
+    h = h[h["daynight"] == "ALL"] if "daynight" in h else h
+    metric = str(h["metric"].iloc[0]) if "metric" in h else "n_hotspots"
+    g = h.assign(month=h["period"].astype(str).str[:7]).groupby("month")[
+        [c for c in ("viirs_raw", "modis_raw", "harmonized_value") if c in h]].sum(min_count=1)
+    if g.empty:
+        return None
+    t = pd.to_datetime(g.index + "-01")
+    fig, ax = plt.subplots(figsize=(10, 3.6))
+    ax.plot(t, g["harmonized_value"], color=C_ORANGE, lw=2, label="harmonized (VIIRS-equivalent)")
+    if "viirs_raw" in g:
+        ax.plot(t, g["viirs_raw"], color=C_BLUE, lw=1.4, label="VIIRS raw")
+    if "modis_raw" in g:
+        ax.plot(t, g["modis_raw"], color=C_GREY, lw=1.2, ls="--", label="MODIS raw")
+    ax.set_ylabel(f"Monthly total [{UNITS.get(metric, '')}]")
+    ax.set_xlabel("Month")
+    ax.set_title(f"Harmonized series, all cells summed ({LABELS.get(metric, metric)})", loc="left")
+    ax.legend(fontsize=8)
     fig.tight_layout()
-    fig.savefig(path); plt.close(fig)
+    return _save(fig, path)
 
 
-def plot_ratio(paired_by_source: dict, path: Path):
-    fig, axes = plt.subplots(len(METRICS), 2, figsize=(10, 3.0 * len(METRICS)), sharex=True)
-    ref = paired_by_source.get(MODIS_ALL)
-    months = sorted(ref["period"].astype(str).str[:7].unique()) if ref is not None else []
-    for i, metric in enumerate(METRICS):
-        cols = [f"modis_{metric}", f"viirs_{metric}"]
-        ax = axes[i, 0]
-        if ref is not None:
-            for dn, col, mk, lab in (("ALL", C_INK, "o", "day+night"), ("D", C_ORANGE, "s", "day"),
-                                     ("N", C_BLUE, "^", "night")):
-                m = _monthly(ref, cols, dn).reindex(months)
-                r = m[cols[1]] / m[cols[0]].where(m[cols[0]] > 0)
-                ax.plot(range(len(months)), r, color=col, marker=mk, ms=4, label=lab,
-                        lw=2.4 if dn == "ALL" else 1.6)
-        ax.set_title(f"{LABELS[metric]}: by overpass (Terra+Aqua)")
-        ax.set_ylabel("VIIRS / MODIS ratio [-]")
-        ax.legend(fontsize=7.5, ncol=3, loc="best")
-        ax = axes[i, 1]
-        for src, col, mk, lab in ((MODIS_ALL, C_INK, "o", "Terra + Aqua"),
-                                  ("MODIS_AQUA", C_AQUA, "s", "Aqua (13:30 / 01:30)"),
-                                  ("MODIS_TERRA", C_ORANGE, "^", "Terra (10:30 / 22:30)")):
-            if src not in paired_by_source:
-                continue
-            m = _monthly(paired_by_source[src], cols).reindex(months)
-            r = m[cols[1]] / m[cols[0]].where(m[cols[0]] > 0)
-            ax.plot(range(len(months)), r, color=col, marker=mk, ms=4, label=lab,
-                    lw=2.4 if src == MODIS_ALL else 1.6)
-        ax.set_title(f"{LABELS[metric]}: by platform (day+night)")
-        ax.set_ylabel("VIIRS / MODIS ratio [-]")
-        ax.legend(fontsize=7.5, ncol=3, loc="best")
-    for ax in axes[-1]:
-        _month_axis(ax, months)
-    from matplotlib.ticker import FuncFormatter, LogLocator
-    for ax in axes.ravel():
-        ax.set_yscale("log")
-        lo, hi = ax.get_ylim()
-        ax.set_ylim(lo, hi * 4)                      # headroom for the legend row
-        ax.yaxis.set_major_locator(LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
-        ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
-        ax.yaxis.set_minor_formatter(FuncFormatter(lambda v, _: ""))
-        ax.legend(fontsize=7.5, ncol=3, loc="upper left")
-    fig.suptitle("Monthly national VIIRS / MODIS ratio (log scale; gap where MODIS = 0)",
-                 x=0.01, ha="left", fontweight="bold")
-    fig.tight_layout()
-    fig.savefig(path); plt.close(fig)
-
-
-def plot_validation(monthly_oof: pd.DataFrame, path: Path, scheme: str = "temporal_lomo"):
-    d = monthly_oof[(monthly_oof["scheme"] == scheme) & (monthly_oof["modis_source"] == MODIS_ALL)
-                    & (monthly_oof["daynight"] == "ALL")]
-    if "eval_mode" in d:
-        d = d[d["eval_mode"] == "backcast"]
-    if d.empty:
-        return False
-    models = list(dict.fromkeys(d["model"]))
-    fig, axes = plt.subplots(1, len(METRICS), figsize=(4.4 * len(METRICS), 3.8))
-    colors = dict(zip([m for m in models if m != "raw_modis"], [C_ORANGE, C_AQUA, "#e87ba4", "#6250d6"]))
-    for ax, metric in zip(axes, METRICS):
-        dm = d[d["metric"] == metric]
-        months = sorted(dm["period"].unique())
-        obs = dm.groupby("period")["obs"].first().reindex(months)
-        ax.plot(range(len(months)), obs, color=C_BLUE, marker="o", ms=4, label="VIIRS observed")
-        for m in models:
-            s = dm[dm["model"] == m].set_index("period")["pred"].reindex(months)
-            if m == "raw_modis":
-                ax.plot(range(len(months)), s, color=C_GREY, ls="--", lw=1.4, label="raw MODIS")
-            elif m in colors:
-                ax.plot(range(len(months)), s, color=colors[m], marker="s", ms=3.5, lw=1.6,
-                        label=f"{m} (held-out)")
-        ax.set_title(LABELS[metric])
-        ax.set_ylabel(f"National monthly total [{UNITS[metric]}]")
-        _month_axis(ax, months)
-        ax.legend(fontsize=8)
-    fig.suptitle("Out-of-fold predictions, leave-one-month-out (each month predicted by a model "
-                 "fitted on the other months; back-cast mode)", x=0.01, ha="left", fontweight="bold", fontsize=10)
-    fig.tight_layout()
-    fig.savefig(path); plt.close(fig)
-    return True
-
-
+# ---------------------------------------------------------------- entry point
 def make_plots(paired_by_source: dict[str, pd.DataFrame], harmonized_df_or_None,
                coef_json_or_None, cfg: Config) -> list[Path]:
     out = cfg.out_dir / "plots"
+    paired_by_source = {k: v for k, v in (paired_by_source or {}).items()
+                        if v is not None and not v.empty}
+    if not paired_by_source:  # MODIS-only back-cast run: no overlap to compare against
+        return []
     out.mkdir(parents=True, exist_ok=True)
-    written = []
-    if not paired_by_source:  # e.g. a MODIS-only back-cast run: no overlap to compare against
-        return written
     src = MODIS_ALL if MODIS_ALL in paired_by_source else next(iter(paired_by_source))
     paired = paired_by_source[src]
-    p = out / "scatter_modis_vs_viirs.png"; plot_scatter(paired, coef_json_or_None, p, src); written.append(p)
-    p = out / "monthly_before_after.png"
-    plot_before_after(paired, harmonized_df_or_None, coef_json_or_None, p, src); written.append(p)
-    p = out / "monthly_ratio.png"; plot_ratio(paired_by_source, p); written.append(p)
-    vpath = cfg.out_dir / "validation" / "monthly_oof.csv"
-    if vpath.exists():
-        p = out / "validation_oof_monthly.png"
-        if plot_validation(pd.read_csv(vpath, dtype={"period": str}), p):
-            written.append(p)
-    return written
+    written = [
+        plot_map(paired, coef_json_or_None, cfg, out / "map_ratio_and_k.png"),
+        plot_domain_bias(cfg, out / "domain_bias_lodo.png"),
+        plot_domain_monthly(cfg, coef_json_or_None, out / "monthly_by_domain_lodo.png"),
+        plot_scatter(paired, out / "scatter_modis_vs_viirs.png", src),
+        plot_harmonized(harmonized_df_or_None, out / "harmonized_series.png"),
+    ]
+    return [p for p in written if p is not None]
 
 
-if __name__ == "__main__":  # python -m harmonize.plots paired.csv [out_dir]
+if __name__ == "__main__":  # python -m harmonize.plots paired.parquet [out_dir]
     import sys
-    df = pd.read_csv(sys.argv[1], dtype={"cell_id": str, "period": str})
+    path = sys.argv[1]
+    df = pd.read_parquet(path) if path.endswith(".parquet") else pd.read_csv(
+        path, dtype={"cell_id": str, "period": str})
     cfg = Config(out_dir=sys.argv[2] if len(sys.argv) > 2 else "outputs")
-    for f in make_plots({s: d for s, d in df.groupby("modis_source")}, None, None, cfg):
+    for f in make_plots({s: d for s, d in df.groupby("modis_source", observed=True)}, None, None, cfg):
         print(f)

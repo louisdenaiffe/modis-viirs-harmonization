@@ -1,161 +1,152 @@
-"""End-to-end harmonization pipeline.
+"""End-to-end harmonization pipeline (global, multi-year).
 
     python -m harmonize.pipeline [--data-dir data] [--out-dir outputs]
                                  [--cell-size 0.25] [--time-step month|day]
                                  [--keep-types 0] [--min-confidence nominal]
-                                 [--coefficients path.json]   # apply existing coefficients, skip fitting
+                                 [--coefficients path.json]   # apply existing coefficients (back-cast)
+                                 [--skip-validation]          # faster runs on very large inputs
 
-Reads every FIRMS CSV in data/, writes everything into outputs/.
+Reads every FIRMS CSV / zip under --data-dir (any countries, any years, MODIS and/or VIIRS),
+writes everything into --out-dir. See SCHEMA.md and METHOD.md.
 """
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
-from .config import Config, MODIS_ALL, SOURCES_MODIS
-from . import ingest, aggregate as agg_mod, calibrate
+from .config import Config, MODIS_CONFIGS
+from . import ingest, coverage as cov_mod, aggregate as agg_mod, calibrate, harmonized as harm_mod
 
 log = logging.getLogger("harmonize")
 
-KEYS = ["cell_id", "cell_lat", "cell_lon", "period", "daynight"]
-MODIS_CANDIDATES = (MODIS_ALL, "MODIS_AQUA", "MODIS_TERRA")
 
+def choose_recommendation(calib_rec: dict, val: dict) -> dict:
+    """Final pick from the INDEPENDENT validation (validate.py), Terra+Aqua, day+night pooled.
 
-def build_harmonized(agg: pd.DataFrame, coverage: dict, coef: dict, cfg: Config) -> pd.DataFrame:
-    """SCHEMA §5: one row per (cell, period, daynight) over ALL periods (not just the overlap)."""
-    rec = coef["recommended"]
-    metric, model, msrc = rec["metric"], rec["model"], rec["modis_source"]
-    vsrc = cfg.viirs_reference
-
-    def side(src):
-        d = agg.loc[agg["source"] == src, KEYS + [metric]]
-        return d.rename(columns={metric: src})
-
-    h = side(msrc).merge(side(vsrc), on=KEYS, how="outer")
-    m_cov = h["period"].isin(coverage.get(msrc, set()))
-    v_cov = h["period"].isin(coverage.get(vsrc, set()))
-    # zero-fill inside covered periods, NaN outside
-    h["modis_raw"] = np.where(m_cov, h[msrc].fillna(0), np.nan)
-    h["viirs_raw"] = np.where(v_cov, h[vsrc].fillna(0), np.nan)
-
-    eq = np.full(len(h), np.nan)
-    for dn, idx in h.groupby("daynight").groups.items():
-        x = h.loc[idx, "modis_raw"].to_numpy(dtype=float)
-        ok = ~np.isnan(x)
-        out = np.full(len(x), np.nan)
-        if ok.any():
-            out[ok] = calibrate.apply_coefficients(coef, metric, msrc, dn, x[ok], model=model,
-                                                         fit_level=rec.get("fit_level"), cfg=cfg)
-        eq[h.index.get_indexer(idx)] = out
-    if metric == "fire_cell_days":  # a cell cannot burn on more days than the period has
-        eq = np.minimum(eq, _period_days(h["period"], cfg.time_step))
-    h["modis_as_viirs_equivalent"] = eq
-    h["harmonized_value"] = np.where(v_cov, h["viirs_raw"], h["modis_as_viirs_equivalent"])
-    h["source_flag"] = np.where(v_cov, "VIIRS", np.where(m_cov, "MODIS_CALIBRATED", "NONE"))
-    h["metric"] = metric
-    h = h[h["source_flag"] != "NONE"]
-    cols = ["cell_id", "cell_lat", "cell_lon", "period", "daynight", "metric", "modis_raw",
-            "viirs_raw", "modis_as_viirs_equivalent", "harmonized_value", "source_flag"]
-    return h[cols].sort_values(["period", "daynight", "cell_id"]).reset_index(drop=True)
-
-
-def choose_recommendation(calib_rec: dict, summary: pd.DataFrame) -> dict:
-    """Final pick = best model in the independent hold-out summary (back-cast mode, pooled D+N,
-    worst case over temporal AND spatial folds). The calibration module's own leave-one-month-out
-    pick is kept for reference: it cannot see spatial transfer, which is what separates metrics."""
-    s = summary[(summary["eval_mode"] == "backcast") & (summary["daynight"] == "ALL")
-                & (summary["model"] != "raw_modis") & (summary["modis_source"] == MODIS_ALL)]
+    1. Primary: p90 |domain-year bias| under leave-one-domain-out (transfer to unseen regions).
+    2. Tie-break: among candidates within 1 point of the best, take the lowest p90 under
+       leave-one-year-out. Once every region is in the calibration set (a global 2012-2024 fit),
+       this is exactly the back-cast situation, so a model that equals the best on unseen regions
+       but is better on seen regions in unseen years is the better product.
+    The calibration module's own pick is kept under `calibration_module_pick`."""
+    summary, scores = val.get("summary"), val.get("scores")
+    if summary is None or summary.empty or "rank_overall" not in summary:
+        return calib_rec
+    s = summary.dropna(subset=["rank_overall"])
+    for col, v in (("daynight", "ALL"), ("modis_source", "MODIS_ALL")):
+        if col in s and (s[col] == v).any():
+            s = s[s[col] == v]
+    s = s[s["model"] != "raw_modis"]
     if s.empty:
         return calib_rec
-    best = s.sort_values(["rank_overall", "worst_abs_bias_pct"]).iloc[0]
-    rec = {
-        "metric": best["metric"], "model": best["model"], "modis_source": best["modis_source"],
-        "fit_level": calib_rec.get("fit_level", "cell_period"), "use_daynight_split": False,
-        "validation_worst_abs_bias_pct": float(best["worst_abs_bias_pct"]),
-        "validation_min_r2_monthly": float(best["min_r2_monthly"]),
-        "validation_min_spearman_months": float(best["min_spearman_months"]),
-        "reason": ("Chosen on independent hold-out (leave-one-month-out, Jan-Jun/Jul-Dec, 5-fold cells, "
-                   "north/south): lowest worst-case national bias with D+N pooled. Night-only ratios "
-                   "are unstable; D/N split not used."),
-        "calibration_module_pick": {k: calib_rec.get(k) for k in
-                                    ("metric", "model", "modis_source", "lomo_wape_pct", "lomo_bias_pct")},
-    }
-    return rec
+    best_p90 = s["p90_abs_bias_pct"].min()
+    tied = s[s["p90_abs_bias_pct"] <= best_p90 + 1.0].copy()
+    tied["lyo_p90"] = float("nan")
+    if scores is not None and "scheme" in scores and (scores["scheme"] == "leave_year_out").any():
+        ly = scores[(scores["scheme"] == "leave_year_out") & (scores["modis_source"] == "MODIS_ALL")
+                    & (scores["daynight"] == "ALL")].set_index(["metric", "model"])["p90_abs_bias_pct"]
+        tied["lyo_p90"] = [ly.get((m, mo), float("nan")) for m, mo in zip(tied["metric"], tied["model"])]
+    best = tied.sort_values(["lyo_p90", "p90_abs_bias_pct"], na_position="last").iloc[0]
+    rec = {"metric": best["metric"], "model": best["model"],
+           "reason": (f"Independent validation: p90 |domain-year bias| {best['p90_abs_bias_pct']:.1f}% under "
+                      f"leave-one-domain-out (best {best_p90:.1f}%); tie-break on leave-one-year-out p90 "
+                      f"({best['lyo_p90']:.1f}%). See validation/summary.csv and scores.csv."),
+           "validation": {k: best[k] for k in best.index if k not in ("metric", "model")},
+           "candidates_tied": tied[["metric", "model", "p90_abs_bias_pct", "lyo_p90"]].to_dict("records"),
+           "calibration_module_pick": {k: calib_rec.get(k) for k in ("metric", "model", "reason")}}
+    return json.loads(json.dumps(rec, default=str))
 
 
-def _period_days(period: pd.Series, time_step: str) -> np.ndarray:
-    if time_step == "day":
-        return np.ones(len(period))
-    return pd.PeriodIndex(period, freq="M").days_in_month.to_numpy(dtype=float)
+def _plain(df: pd.DataFrame) -> pd.DataFrame:
+    """Shallow copy without .attrs (tag_points stores a non-serialisable CoverageIndex there)."""
+    d = df.copy(deep=False)
+    d.attrs = {}
+    return d
 
 
-def run(cfg: Config, coefficients_path: Path | None = None) -> dict:
+def run(cfg: Config, coefficients_path: Path | None = None, skip_validation: bool = False) -> dict:
     out = cfg.out_dir
     out.mkdir(parents=True, exist_ok=True)
 
-    log.info("1/7 ingest %s", cfg.data_dir)
+    log.info("1/8 ingest %s", cfg.data_dir)
     pts_all = ingest.load_points(cfg)
+    if pts_all.empty:
+        raise SystemExit(f"No FIRMS CSV/zip files found under {cfg.data_dir}")
+    files = sorted(map(str, pts_all["source_file"].unique()))
+    log.info("    %d files, %d raw points", len(files), len(pts_all))
+
+    log.info("2/8 coverage (%.3g deg tiles, daily)", cfg.coverage_tile_deg)
+    coverage = cov_mod.build_coverage(pts_all, cfg)
+    coverage.to_parquet(out / "coverage.parquet", index=False)
     pts = ingest.apply_filters(pts_all, cfg)
-    log.info("    %d raw points -> %d after filters", len(pts_all), len(pts))
-    pts.to_csv(out / "hotspots_clean.csv", index=False)
+    del pts_all
+    gc.collect()
+    pts = cov_mod.tag_points(pts, coverage, cfg)
+    log.info("    %d points after filters; per source: %s", len(pts),
+             pts["source"].value_counts().to_dict())
+    pts_path = out / "hotspots_clean.parquet"
+    _plain(pts).to_parquet(pts_path, index=False)  # always: also used to reload points after calibration
+    if cfg.points_format in ("csv", "both"):
+        _plain(pts).to_csv(out / "hotspots_clean.csv", index=False)
 
-    log.info("2/7 aggregate (%.3g deg, %s)", cfg.cell_size_deg, cfg.time_step)
-    agg = agg_mod.aggregate(pts, cfg)
-    agg.to_csv(out / "aggregated.csv", index=False)
-    coverage = agg_mod.coverage_from_points(pts_all, cfg)
-
-    vref = cfg.viirs_reference
+    log.info("3/8 paired tables (jointly covered tile-days only)")
     paired = {}
-    for src in MODIS_CANDIDATES:
-        if coverage.get(src) and coverage.get(vref) and coverage[src] & coverage[vref]:
-            paired[src] = agg_mod.make_paired(agg, src, cfg, coverage=coverage)
+    for src in MODIS_CONFIGS:
+        p = agg_mod.make_paired(pts, src, cfg, coverage=coverage)
+        if len(p) and p["modis_n_hotspots"].sum() > 0 and p["viirs_n_hotspots"].sum() > 0:
+            paired[src] = p
     if paired:
-        pd.concat(paired.values()).to_csv(out / "paired.csv", index=False)
+        _plain(pd.concat(paired.values(), ignore_index=True)).to_parquet(out / "paired.parquet", index=False)
+    log.info("    %s", {k: len(v) for k, v in paired.items()})
+    del pts  # free ~GBs during calibration/validation; reloaded for the harmonized table
+    gc.collect()
 
     if coefficients_path:
-        log.info("3/7 using existing coefficients %s", coefficients_path)
+        log.info("4/8 using existing coefficients %s", coefficients_path)
         coef = json.loads(Path(coefficients_path).read_text())
     else:
         if not paired:
-            raise SystemExit("No MODIS/VIIRS overlap periods to calibrate on; pass --coefficients")
-        log.info("3/7 calibrate")
-        meta = {
-            "source_files": sorted(pts_all["source_file"].unique().tolist()),
-            "periods": sorted(set().union(*[set(p["period"]) for p in paired.values()])),
-            "n_cells": int(agg["cell_id"].nunique()),
-        }
-        log.info("4/7 stability table (leave-one-month-out on national totals)")
-        stab = calibrate.stability_table(paired, cfg)
-        stab.to_csv(out / "calibration_stability.csv", index=False)
-        coef = calibrate.fit_all(paired, cfg, training_meta=meta, stability=stab)
+            raise SystemExit("No tile-days covered by both MODIS and VIIRS: nothing to calibrate on. "
+                             "Pass --coefficients to apply an existing calibration.")
+        log.info("4/8 calibrate")
+        periods = sorted(set().union(*[set(p["period"]) for p in paired.values()]))
+        meta = {"source_files": files,
+                "domains": sorted(set().union(*[set(p["domain"].astype(str)) for p in paired.values()])),
+                "periods": periods, "years": sorted({p[:4] for p in periods})}
+        coef = calibrate.fit_all(paired, cfg, training_meta=meta)
         coef["created_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     val = {}
-    if paired:
-        log.info("5/7 independent hold-out validation")
+    if paired and not skip_validation:
+        log.info("5/8 independent hold-out validation")
         from . import validate
         val = validate.run_validation(paired, cfg)
         if not coefficients_path:
-            coef["recommended"] = choose_recommendation(coef["recommended"], val["summary"])
-            (out / "calibration_coefficients.json").write_text(json.dumps(coef, indent=2))
-            log.info("    recommended: %s", {k: coef["recommended"][k] for k in ("metric", "model", "modis_source")})
+            coef["recommended"] = choose_recommendation(coef["recommended"], val)
+    if not coefficients_path:
+        (out / "calibration_coefficients.json").write_text(json.dumps(coef, indent=2, default=str))
+    log.info("    recommended: %s / %s", coef["recommended"]["metric"], coef["recommended"]["model"])
 
-    log.info("6/7 harmonized.csv")
-    harm = build_harmonized(agg, coverage, coef, cfg)
-    harm.to_csv(out / "harmonized.csv", index=False)
+    log.info("6/8 harmonized table")
+    pts = cov_mod.tag_points(pd.read_parquet(pts_path), coverage, cfg)
+    harm = harm_mod.build_harmonized(pts, coef, cfg, coverage=coverage)
+    del pts
+    if cfg.points_format == "csv":
+        pts_path.unlink()
+    harm_mod.write_harmonized(_plain(harm), out)
+    log.info("    %d rows; flags %s", len(harm), harm["source_flag"].value_counts().to_dict())
 
-    log.info("7/7 plots")
+    log.info("7/8 plots")
     from . import plots
     plots.make_plots(paired, harm, coef, cfg)
-    log.info("done -> %s", out.resolve())
-    return {"points": pts, "agg": agg, "paired": paired, "coef": coef, "validation": val,
-            "harmonized": harm}
+    log.info("8/8 done -> %s", out.resolve())
+    return {"paired": paired, "coef": coef, "validation": val, "harmonized": harm}
 
 
 def main(argv=None):
@@ -166,12 +157,15 @@ def main(argv=None):
     p.add_argument("--time-step", choices=["month", "day"], default="month")
     p.add_argument("--keep-types", type=int, nargs="+", default=[0])
     p.add_argument("--min-confidence", choices=["low", "nominal", "high"], default="nominal")
+    p.add_argument("--points-format", choices=["parquet", "csv", "both"], default="parquet")
     p.add_argument("--coefficients", type=Path, default=None)
+    p.add_argument("--skip-validation", action="store_true")
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     cfg = Config(data_dir=a.data_dir, out_dir=a.out_dir, cell_size_deg=a.cell_size,
-                 time_step=a.time_step, keep_types=tuple(a.keep_types), min_confidence=a.min_confidence)
-    run(cfg, a.coefficients)
+                 time_step=a.time_step, keep_types=tuple(a.keep_types),
+                 min_confidence=a.min_confidence, points_format=a.points_format)
+    run(cfg, a.coefficients, a.skip_validation)
 
 
 if __name__ == "__main__":

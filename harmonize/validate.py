@@ -1,37 +1,55 @@
-"""Independent hold-out validation of the MODIS -> VIIRS calibration models (owner: C).
+"""Independent hold-out validation of the MODIS -> VIIRS calibration models (owner: C, SCHEMA §7).
 
-Only `MODELS`, `fit_model` and `apply_model` are imported from `harmonize.calibrate`;
-folds and scores are computed here, never read from B's `fit_stats`.
+Independence rule: only ``MODELS``, ``fit_model`` and ``apply_model`` are imported from
+``harmonize.calibrate``. Folds, out-of-fold (OOF) predictions and scores are all computed
+here; B's fit statistics, stability tables and recommendation are never read.
 
-Schemes (every scheme yields exactly one out-of-fold (OOF) prediction per row, so
-scores are computed on the pooled OOF predictions; per-fold spread is reported too):
+Hold-out schemes (each yields exactly one OOF prediction per row; the test masks partition
+the rows of every (modis_source, daynight) table):
 
-* ``temporal_lomo``    leave-one-month-out (grouped by ``period[:7]``, so it also works
-                       for ``time_step="day"``).
-* ``temporal_blocked`` first half of the months vs second half, both directions
-                       (for a Jan-Dec year: train Jan-Jun / test Jul-Dec and vice versa).
-                       The Italian fire season (Jun-Sep) is mostly in H2, so this tests
-                       transfer between fire regimes (quiet season <-> peak season),
-                       i.e. whether the calibration is stable when fire activity changes.
-* ``spatial_kfold``    K folds over cells (grouped by ``cell_id``, fixed seed).
-* ``spatial_ns``       north vs south of the median cell latitude, both directions
-                       (tests transfer between climatic/landcover regions).
+* ``leave_domain_out`` (primary) one fold per ``domain`` (country / file label). Every row
+                       of the held-out domain is predicted by a model that never saw that
+                       domain, i.e. transfer to an unseen region.
+* ``spatial_block``    10 deg x 10 deg blocks, grouped K-fold (K = ``N_BLOCK_FOLDS``,
+                       greedy size-balanced, deterministic). Transfer across space that
+                       ignores political borders (a big country spans several blocks).
+* ``leave_year_out``   one fold per year (only when >= 2 years are present).
+* ``lomo``             leave-one-month-of-year-out: the fold is the calendar month (all
+                       years, all domains), so a held-out July is never seen in any year.
+                       This tests seasonal transfer and is stricter than leaving out a
+                       single ``YYYY-MM``.
 
-Scores (on test rows, predicted VIIRS-equivalent vs observed VIIRS):
-``bias_pct`` (100 * (sum pred - sum obs) / sum obs), ``r2_log`` (R^2 on log1p at
-cell-period level), ``r2_raw``, ``r2_monthly`` (R^2 of national monthly totals),
-``spearman_months`` (rank agreement of monthly totals), ``mae`` (cell-period).
-``r2_log_pos`` (R^2 on log1p restricted to rows with MODIS > 0).
-R^2 is the coefficient of determination 1 - SS_res/SS_tot (can be < 0), not r^2.
+Evaluation mode is **back-cast**: the model is only applied to rows where the MODIS-side
+metric is > 0 (prediction 0 elsewhere) and compared with *all* VIIRS, VIIRS-only cells
+included. In a year without VIIRS the VIIRS-only cells do not exist, so this is the error a
+real back-cast makes.
 
-Two evaluation modes (column ``eval_mode``):
-* ``backcast`` (primary): prediction forced to 0 where MODIS = 0. In a year without VIIRS
-  the VIIRS-only cells do not exist, so any mass a model puts on x = 0 is not available.
-* ``union``: the model is applied to every row of the paired table, x = 0 included.
-The ``raw_modis`` baseline predicts VIIRS = MODIS (no calibration).
+Scores, for each scheme x metric x model x modis_source x daynight:
+
+per domain-year (table ``domain_scores``)
+    ``bias_pct``     100 * (sum pred - sum VIIRS) / sum VIIRS over the domain-year
+    ``r2_monthly``   R^2 (1 - SS_res/SS_tot, can be < 0) of the monthly totals
+    ``spearman_monthly`` rank correlation of the monthly totals
+distribution across domain-years (table ``scores``)
+    ``median_abs_bias_pct``, ``p90_abs_bias_pct``, ``max_abs_bias_pct``,
+    ``pooled_bias_pct`` (all domain-years summed), ``median_r2_monthly``,
+    ``median_spearman_monthly``, ``global_r2_monthly`` (R^2 of the summed-over-domains
+    monthly series).
+
+Baselines: ``raw_modis`` (VIIRS = MODIS) and ``ratio_global``. ``summary`` ranks every
+metric+model under leave-domain-out by the 90th percentile of |domain-year bias| (then the
+worst case, then the median monthly R^2). Bias in % is scale-free, so the ranking also
+answers "which metric should be harmonized".
+
+Efficiency: per (modis_source, daynight) table the folds are built once, each training
+frame is sliced once per fold and reused for every metric and model, the model is applied
+only to the test rows with MODIS > 0, and OOF predictions are reduced to
+domain x year x month totals with ``np.bincount``. Nothing is subsampled.
 """
 from __future__ import annotations
 
+import inspect
+import time
 import warnings
 from typing import Callable
 
@@ -39,223 +57,315 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 
-from .config import METRICS, DAYNIGHT, MODIS_ALL, Config
+from .config import DAYNIGHT, METRICS, MODIS_CONFIGS, Config
 
-BASELINE = "raw_modis"
-EVAL_SOURCES = (MODIS_ALL, "MODIS_AQUA")
-SCHEMES = ("temporal_lomo", "temporal_blocked", "spatial_kfold", "spatial_ns")
-N_SPATIAL_FOLDS = 5
-SEED = 20250101
-
-
-# ---------------------------------------------------------------- model backend
-def _stub_fit(name: str, x, y) -> dict:
-    """Local stand-in for B's fit_model (used only if harmonize.calibrate is missing)."""
-    x = np.asarray(x, float)
-    y = np.asarray(y, float)
-    if name == "ratio":
-        return {"model": "ratio", "k": float(y.sum() / max(x.sum(), 1e-12))}
-    if name == "loglog":
-        off = 1.0
-        m = (x > 0) | (y > 0)
-        lx, ly = np.log(x[m] + off), np.log(y[m] + off)
-        b, a = np.polyfit(lx, ly, 1)
-        resid = ly - (a + b * lx)
-        return {"model": "loglog", "a": float(a), "b": float(b), "offset": off,
-                "smearing": float(np.mean(np.exp(resid)))}
-    raise ValueError(name)
+BASELINE_RAW = "raw_modis"
+BASELINE_RATIO = "ratio_global"
+SCHEMES = ("leave_domain_out", "spatial_block", "leave_year_out", "lomo")
+PRIMARY_SCHEME = "leave_domain_out"
+BLOCK_DEG = 10.0
+N_BLOCK_FOLDS = 5
+# MODIS-side feature columns (paired table ``modis_<f>``) that a model may use at apply time
+MODIS_FEATURES = ("frp_mean", "frp_p90", "scan_mean", "bright_mir_mean", "n_terra", "n_aqua")
+# extra key columns handed to models alongside the MODIS-side values (never a VIIRS column)
+ROW_KEYS = ("cell_id", "cell_lat", "cell_lon", "period", "period_start", "daynight", "domain")
 
 
-def _stub_apply(params: dict, x) -> np.ndarray:
-    x = np.asarray(x, float)
-    if params["model"] == "ratio":
-        return params["k"] * x
-    p = params
-    return np.maximum(0.0, p["smearing"] * np.exp(p["a"]) * (x + p["offset"]) ** p["b"] - p["offset"])
+# ============================================================== model backend
+# Local stand-in implementing B's v2 interface; used only while harmonize.calibrate does not
+# expose it. ratio_regional here is a single-level 10 deg tile ratio with pseudo-count
+# shrinkage to the global ratio (B's real model is nested and empirical-Bayes).
+_STUB_TILE_DEG = 10.0
+_STUB_PSEUDO = 200.0      # pseudo-count in MODIS units pulling a tile's k toward global
 
 
-def get_backend():
-    """Return (model_names, fit_fn, apply_fn, backend_label)."""
+def _stub_fit(name: str, paired: pd.DataFrame, metric: str, cfg: Config) -> dict:
+    x = paired[f"modis_{metric}"].to_numpy(float)
+    y = paired[f"viirs_{metric}"].to_numpy(float)
+    kg = float(y.sum() / x.sum()) if x.sum() > 0 else 1.0
+    if name == "ratio_global":
+        return {"model": name, "k": kg}
+    if name == "ratio_regional":
+        t = _tile_key(paired["cell_lat"].to_numpy(float), paired["cell_lon"].to_numpy(float),
+                      _STUB_TILE_DEG)
+        sx = pd.Series(x).groupby(t).sum()
+        sy = pd.Series(y).groupby(t).sum()
+        k = (sy + _STUB_PSEUDO * kg) / (sx + _STUB_PSEUDO)
+        return {"model": name, "k_global": kg, "tile_deg": _STUB_TILE_DEG,
+                "k_tile": {str(int(i)): float(v) for i, v in k.items()}}
+    raise ValueError(f"stub has no model {name!r}")
+
+
+def _stub_apply(params: dict, modis_rows: pd.DataFrame, metric: str) -> np.ndarray:
+    x = np.nan_to_num(modis_rows[metric].to_numpy(float))
+    if params["model"] == "ratio_global":
+        return np.maximum(params["k"] * x, 0.0)
+    t = _tile_key(modis_rows["cell_lat"].to_numpy(float), modis_rows["cell_lon"].to_numpy(float),
+                  params["tile_deg"])
+    lut = {int(i): v for i, v in params["k_tile"].items()}
+    k = pd.Series(t).map(lut).fillna(params["k_global"]).to_numpy(float)
+    return np.maximum(k * x, 0.0)
+
+
+def get_backend() -> tuple[list[str], Callable, Callable, str]:
+    """Return (model_names, fit_fn, apply_fn, backend_label).
+
+    Uses harmonize.calibrate when it exposes the v2 interface
+    ``fit_model(name, paired, metric, cfg)``; otherwise the local stub.
+    """
     try:
         from . import calibrate as cal  # noqa: WPS433
+        params = list(inspect.signature(cal.fit_model).parameters)
         names = list(cal.MODELS.keys()) if isinstance(cal.MODELS, dict) else list(cal.MODELS)
-        return names, cal.fit_model, cal.apply_model, "harmonize.calibrate"
-    except ImportError:
-        warnings.warn("harmonize.calibrate not importable; validating the local stub models")
-        return ["ratio", "loglog"], _stub_fit, _stub_apply, "stub"
+        if len(params) >= 4 and params[1] in ("paired", "df", "data") and BASELINE_RATIO in names:
+            return names, cal.fit_model, cal.apply_model, "harmonize.calibrate"
+    except Exception:  # noqa: BLE001 - any import/signature problem -> stub
+        pass
+    warnings.warn("harmonize.calibrate does not expose the v2 model interface yet; "
+                  "validating the local stub models (ratio_global, ratio_regional)")
+    return ["ratio_global", "ratio_regional"], _stub_fit, _stub_apply, "stub"
 
 
-# ---------------------------------------------------------------- folds
-def month_key(period: pd.Series) -> pd.Series:
-    return period.astype(str).str[:7]
+def modis_rows(paired: pd.DataFrame, modis_source: str) -> pd.DataFrame:
+    """MODIS-side view of a paired table, shaped like SCHEMA §3 rows: ``modis_`` prefix
+    stripped, keys kept, ``source`` = the MODIS configuration. No VIIRS column."""
+    cols = {c: c[len("modis_"):] for c in paired.columns
+            if c.startswith("modis_") and c != "modis_source"}
+    out = paired[[c for c in ROW_KEYS if c in paired.columns] + list(cols)].rename(columns=cols)
+    out["source"] = modis_source
+    return out
 
 
-def make_folds(df: pd.DataFrame, scheme: str, seed: int = SEED,
-               n_spatial: int = N_SPATIAL_FOLDS) -> list[tuple[str, np.ndarray]]:
-    """Return [(fold_name, test_mask)]; train = ~test_mask. Test masks partition the rows."""
-    months = month_key(df["period"])
-    if scheme == "temporal_lomo":
-        return [(m, (months == m).to_numpy()) for m in sorted(months.unique())]
-    if scheme == "temporal_blocked":
-        um = sorted(months.unique())
-        h1 = set(um[: len(um) // 2])
-        in_h1 = months.isin(h1).to_numpy()
-        return [(f"test_{um[len(um)//2]}..{um[-1]}", ~in_h1),
-                (f"test_{um[0]}..{um[len(um)//2 - 1]}", in_h1)]
-    if scheme == "spatial_kfold":
-        cells = np.array(sorted(df["cell_id"].unique()))
-        rng = np.random.default_rng(seed)
-        fold_of = dict(zip(rng.permutation(cells), np.arange(len(cells)) % n_spatial))
-        f = df["cell_id"].map(fold_of).to_numpy()
-        return [(f"fold{k}", f == k) for k in range(n_spatial)]
-    if scheme == "spatial_ns":
-        lat_by_cell = df.groupby("cell_id")["cell_lat"].first()
-        cut = float(lat_by_cell.median())
-        north = (df["cell_lat"] > cut).to_numpy()
-        return [(f"test_north_of_{cut:.3f}", north), (f"test_south_of_{cut:.3f}", ~north)]
-    raise ValueError(f"unknown scheme {scheme!r}")
+# ============================================================== folds
+def _tile_key(lat: np.ndarray, lon: np.ndarray, deg: float) -> np.ndarray:
+    iy = np.floor((np.asarray(lat, float) + 90.0) / deg).astype(np.int64)
+    ix = np.floor((np.asarray(lon, float) + 180.0) / deg).astype(np.int64)
+    return iy * 100_000 + ix
 
 
-# ---------------------------------------------------------------- scores
+def year_of(df: pd.DataFrame) -> np.ndarray:
+    if "year" in df.columns:
+        return df["year"].to_numpy().astype(np.int64)
+    return df["period"].astype(str).str[:4].astype(int).to_numpy()
+
+
+def month_of(df: pd.DataFrame) -> np.ndarray:
+    return df["period"].astype(str).str[5:7].astype(int).to_numpy()
+
+
+def block_of(df: pd.DataFrame, deg: float = BLOCK_DEG) -> np.ndarray:
+    return _tile_key(df["cell_lat"].to_numpy(float), df["cell_lon"].to_numpy(float), deg)
+
+
+def _balanced_group_folds(groups: np.ndarray, k: int) -> np.ndarray:
+    """Greedy size-balanced assignment of groups to k folds (largest group first, ties by
+    group key, so it is deterministic and independent of row order)."""
+    u, cnt = np.unique(groups, return_counts=True)
+    order = sorted(range(len(u)), key=lambda i: (-cnt[i], u[i]))
+    load = np.zeros(k, np.int64)
+    fold_of = {}
+    for i in order:
+        f = int(np.argmin(load))
+        fold_of[u[i]] = f
+        load[f] += cnt[i]
+    return pd.Series(groups).map(fold_of).to_numpy()
+
+
+def make_folds(df: pd.DataFrame, scheme: str, n_block_folds: int = N_BLOCK_FOLDS,
+               block_deg: float = BLOCK_DEG) -> list[tuple[str, np.ndarray]]:
+    """Return [(fold_name, test_mask)]; train = ~test_mask. Test masks partition the rows.
+    Returns [] when the scheme is not applicable (fewer than 2 groups)."""
+    if scheme == "leave_domain_out":
+        g = df["domain"].astype(str).to_numpy()
+    elif scheme == "leave_year_out":
+        g = year_of(df)
+    elif scheme == "lomo":
+        g = month_of(df)
+    elif scheme == "spatial_block":
+        b = block_of(df, block_deg)
+        nb = len(np.unique(b))
+        if nb < 2:
+            return []
+        f = _balanced_group_folds(b, min(n_block_folds, nb))
+        return [(f"blockfold{k}", f == k) for k in range(min(n_block_folds, nb))]
+    else:
+        raise ValueError(f"unknown scheme {scheme!r}")
+    u = np.unique(g)
+    if len(u) < 2:
+        return []
+    return [(str(v), g == v) for v in u]
+
+
+# ============================================================== scores
 def _r2(obs, pred) -> float:
     obs, pred = np.asarray(obs, float), np.asarray(pred, float)
+    if len(obs) < 2:
+        return np.nan
     sst = np.sum((obs - obs.mean()) ** 2)
     return float(1 - np.sum((obs - pred) ** 2) / sst) if sst > 0 else np.nan
 
 
 def _spearman(a, b) -> float:
+    a, b = np.asarray(a, float), np.asarray(b, float)
     if len(a) < 3 or np.ptp(a) == 0 or np.ptp(b) == 0:
         return np.nan
     return float(spearmanr(a, b).statistic)
 
 
-def score(obs: np.ndarray, pred: np.ndarray, months: np.ndarray, x=None) -> dict:
-    """``x`` (MODIS input) enables ``r2_log_pos``: R^2 on log1p over rows with MODIS > 0,
-    i.e. the cell-level skill where the model has something to work with."""
-    obs, pred = np.asarray(obs, float), np.asarray(pred, float)
-    tot = obs.sum()
-    mt = pd.DataFrame({"m": months, "o": obs, "p": pred}).groupby("m")[["o", "p"]].sum()
+def _bias(pred_sum, obs_sum) -> float:
+    return float(100 * (pred_sum - obs_sum) / obs_sum) if obs_sum > 0 else np.nan
+
+
+def score_domain_years(m: pd.DataFrame) -> pd.DataFrame:
+    """``m``: monthly totals with columns domain, year, month, obs, pred. Returns one row
+    per domain-year: obs_total, pred_total, bias_pct, r2_monthly, spearman_monthly."""
+    out = []
+    for (dom, yr), g in m.groupby(["domain", "year"], sort=True):
+        g = g.sort_values("month")
+        o, p = g["obs"].to_numpy(float), g["pred"].to_numpy(float)
+        out.append(dict(domain=dom, year=int(yr), n_months=len(g), obs_total=o.sum(),
+                        pred_total=p.sum(), bias_pct=_bias(p.sum(), o.sum()),
+                        r2_monthly=_r2(o, p), spearman_monthly=_spearman(o, p)))
+    return pd.DataFrame(out)
+
+
+def distribution(ds: pd.DataFrame, m: pd.DataFrame) -> dict:
+    """Distribution of domain-year scores + pooled global numbers."""
+    ab = ds["bias_pct"].abs().dropna()
+    gm = m.groupby(["year", "month"])[["obs", "pred"]].sum()
     return {
-        "n_test": int(len(obs)),
-        "bias_pct": float(100 * (pred.sum() - tot) / tot) if tot > 0 else np.nan,
-        "r2_log": _r2(np.log1p(obs), np.log1p(pred)),
-        "r2_log_pos": (_r2(np.log1p(obs[x > 0]), np.log1p(pred[x > 0]))
-                       if x is not None and (np.asarray(x) > 0).sum() > 1 else np.nan),
-        "r2_raw": _r2(obs, pred),
-        "r2_monthly": _r2(mt["o"], mt["p"]) if len(mt) >= 2 else np.nan,
-        "spearman_months": _spearman(mt["o"].to_numpy(), mt["p"].to_numpy()),
-        "mae": float(np.mean(np.abs(pred - obs))),
+        "n_domain_years": int(len(ab)),
+        "median_abs_bias_pct": float(ab.median()) if len(ab) else np.nan,
+        "p90_abs_bias_pct": float(np.percentile(ab, 90)) if len(ab) else np.nan,
+        "max_abs_bias_pct": float(ab.max()) if len(ab) else np.nan,
+        "worst_domain_year": (f"{ds.loc[ab.idxmax(), 'domain']}-{ds.loc[ab.idxmax(), 'year']}"
+                              if len(ab) else ""),
+        "pooled_bias_pct": _bias(m["pred"].sum(), m["obs"].sum()),
+        "median_r2_monthly": float(ds["r2_monthly"].median()),
+        "min_r2_monthly": float(ds["r2_monthly"].min()),
+        "median_spearman_monthly": float(ds["spearman_monthly"].median()),
+        "global_r2_monthly": _r2(gm["obs"], gm["pred"]),
     }
 
 
-# ---------------------------------------------------------------- core loop
-def _predict_oof(sub_by_dn: dict[str, pd.DataFrame], metric: str, model: str,
-                 test_masks: dict[str, list], fit: Callable, apply: Callable,
-                 min_pairs: int) -> dict[str, list[np.ndarray]]:
-    """OOF predictions per daynight, per fold. D/N fits with < min_pairs training rows
-    fall back to the ALL fit of the same fold (mirrors the schema §4 fallback)."""
-    out: dict[str, list] = {}
-    all_params: list = []
-    for dn in ("ALL", "D", "N"):
-        if dn not in sub_by_dn:
+# ============================================================== core loop
+def _group_codes(d: pd.DataFrame) -> tuple[np.ndarray, pd.DataFrame]:
+    """Integer code per row for (domain, year, month) + the decoding table."""
+    key = pd.DataFrame({"domain": d["domain"].astype(str).to_numpy(), "year": year_of(d),
+                        "month": month_of(d)})
+    g = key.groupby(["domain", "year", "month"], sort=True)
+    codes = g.ngroup().to_numpy(np.int64)
+    uniq = g.size().reset_index()[["domain", "year", "month"]]
+    return codes, uniq
+
+
+def _validate_table(d: pd.DataFrame, src: str, dn: str, model_list: list[str], metrics,
+                    schemes, fit, apply, cfg: Config, log) -> tuple[list, list]:
+    """All schemes / metrics / models on one (modis_source, daynight) table.
+    Returns (monthly frames, fold-info rows)."""
+    rows = modis_rows(d, src)
+    codes, keys = _group_codes(d)
+    ng = len(keys)
+    obs = {m: np.bincount(codes, d[f"viirs_{m}"].to_numpy(float), ng) for m in metrics}
+    xs = {m: np.nan_to_num(d[f"modis_{m}"].to_numpy(float)) for m in metrics}
+    monthly, finfo = [], []
+    for scheme in schemes:
+        folds = make_folds(d, scheme)
+        if not folds:
             continue
-        d = sub_by_dn[dn]
-        x = d[f"modis_{metric}"].to_numpy(float)
-        y = d[f"viirs_{metric}"].to_numpy(float)
-        preds = []
-        for i, (_, test) in enumerate(test_masks[dn]):
-            if model == BASELINE:
-                preds.append(x[test].copy())
-                continue
+        # oof[(metric, model)] = per-row prediction (0 where MODIS = 0)
+        oof = {(m, mod): np.zeros(len(d)) for m in metrics for mod in model_list}
+        nfail = {k: 0 for k in oof}
+        t0 = time.time()
+        for fname, test in folds:
             train = ~test
-            if dn == "ALL" or train.sum() >= min_pairs:
-                params = fit(model, x[train], y[train]) if train.sum() >= 2 else None
-            else:
-                params = all_params[i] if i < len(all_params) else None
-            if dn == "ALL":
-                all_params.append(params)
-            preds.append(np.full(test.sum(), np.nan) if params is None
-                         else np.asarray(apply(params, x[test]), float))
-        out[dn] = preds
-    return out
+            finfo.append(dict(scheme=scheme, fold=fname, modis_source=src, daynight=dn,
+                              n_train=int(train.sum()), n_test=int(test.sum()),
+                              test_domains=";".join(sorted(map(str, d.loc[test, "domain"].unique())))))
+            tr = d[train] if any(mod != BASELINE_RAW for mod in model_list) else None
+            for m in metrics:
+                te = test & (xs[m] > 0)
+                if not te.any():
+                    continue
+                rte = rows[te]
+                for mod in model_list:
+                    if mod == BASELINE_RAW:
+                        oof[(m, mod)][te] = xs[m][te]
+                        continue
+                    try:
+                        params = fit(mod, tr, m, cfg)
+                        p = np.asarray(apply(params, rte, m), float)
+                        if p.shape != (int(te.sum()),):
+                            raise ValueError(f"apply_model returned shape {p.shape}")
+                        oof[(m, mod)][te] = p
+                    except Exception as e:  # a failing model must not kill the run
+                        nfail[(m, mod)] += 1
+                        oof[(m, mod)][te] = np.nan
+                        warnings.warn(f"{mod}/{m}/{src}/{dn}/{scheme}/{fname} failed: {e!r}")
+        log(f"  {src:11s} {dn:3s} {scheme:16s} {len(folds):2d} folds  {time.time() - t0:6.1f}s")
+        for (m, mod), pr in oof.items():
+            bad = np.bincount(codes, np.isnan(pr).astype(float), ng) > 0
+            ps = np.bincount(codes, np.nan_to_num(pr), ng)
+            ps[bad] = np.nan
+            mt = keys.copy()
+            mt["obs"], mt["pred"], mt["raw_modis"] = obs[m], ps, np.bincount(codes, xs[m], ng)
+            mt["scheme"], mt["metric"], mt["model"] = scheme, m, mod
+            mt["modis_source"], mt["daynight"], mt["n_failed_folds"] = src, dn, nfail[(m, mod)]
+            monthly.append(mt)
+    return monthly, finfo
 
 
-def run_validation(paired_by_source: dict[str, pd.DataFrame], cfg: Config,
-                   models=None) -> dict[str, pd.DataFrame]:
-    """Evaluate every metric x model x modis_source x daynight under every scheme.
+def run_validation(paired_by_source: dict[str, pd.DataFrame], cfg: Config, models=None,
+                   schemes=SCHEMES, metrics=METRICS, sources=MODIS_CONFIGS,
+                   daynights=DAYNIGHT, verbose: bool = True) -> dict[str, pd.DataFrame]:
+    """Evaluate metric x model x modis_source x daynight under every hold-out scheme.
 
-    Returns {"scores", "fold_scores", "monthly_oof", "summary"} and writes each to
-    ``cfg.out_dir / "validation" / <name>.csv``.
+    ``paired_by_source``: {modis_source: SCHEMA §4 paired table}. ``models``: subset of
+    calibrate.MODELS (default all); the baselines raw_modis and ratio_global are always
+    added. Returns {"scores", "domain_scores", "monthly_oof", "folds", "summary"} and
+    writes each to ``cfg.out_dir / "validation" / <name>.csv``.
     """
     names, fit, apply, backend = get_backend()
-    model_list = [BASELINE] + [m for m in (models or names) if m != BASELINE]
-    rows, frows, mrows = [], [], []
-    for src in EVAL_SOURCES:
-        if src not in paired_by_source:
+    wanted = list(models) if models is not None else names
+    model_list = [BASELINE_RAW, BASELINE_RATIO] + [m for m in wanted
+                                                   if m not in (BASELINE_RAW, BASELINE_RATIO)]
+    unknown = [m for m in model_list[1:] if m not in names]
+    if unknown:
+        warnings.warn(f"models not provided by the backend, skipped: {unknown}")
+        model_list = [m for m in model_list if m not in unknown]
+    log = print if verbose else (lambda *_: None)
+    log(f"validation backend={backend} models={model_list}")
+    monthly, finfo = [], []
+    for src in sources:
+        p = paired_by_source.get(src)
+        if p is None or p.empty:
             continue
-        p = paired_by_source[src].reset_index(drop=True)
-        sub_by_dn = {dn: p[p["daynight"] == dn].reset_index(drop=True) for dn in DAYNIGHT}
-        sub_by_dn = {k: v for k, v in sub_by_dn.items() if len(v)}
-        for scheme in SCHEMES:
-            # folds are defined on the ALL table and re-derived per daynight table from
-            # the same months / cell assignment / latitude cut (consistent across D/N/ALL)
-            ref = sub_by_dn.get("ALL", p)
-            masks = {}
-            for dn, d in sub_by_dn.items():
-                folds = make_folds(pd.concat([ref, d], ignore_index=True), scheme)
-                masks[dn] = [(n, m[len(ref):]) for n, m in folds]
-            for metric in METRICS:
-                for model in model_list:
-                    try:
-                        oof = _predict_oof(sub_by_dn, metric, model, masks, fit, apply,
-                                           cfg.min_pairs_for_split_fit)
-                    except Exception as e:  # a model failing must not kill the run
-                        warnings.warn(f"{model}/{metric}/{src}/{scheme} failed: {e}")
-                        continue
-                    for dn, preds in oof.items():
-                        d = sub_by_dn[dn]
-                        x_all = d[f"modis_{metric}"].to_numpy(float)
-                        obs_all = d[f"viirs_{metric}"].to_numpy(float)
-                        mon_all = month_key(d["period"]).to_numpy()
-                        pred_union = np.full(len(d), np.nan)
-                        for (_, test), pr in zip(masks[dn], preds):
-                            pred_union[test] = pr
-                        # "backcast": rows where MODIS saw nothing do not exist without
-                        # VIIRS, so their prediction is 0 (VIIRS-only mass is lost).
-                        pred_bc = np.where(x_all > 0, pred_union, 0.0)
-                        for mode, pred_all in (("backcast", pred_bc), ("union", pred_union)):
-                            tags = dict(scheme=scheme, eval_mode=mode, metric=metric, model=model,
-                                        modis_source=src, daynight=dn)
-                            fold_bias, fold_sp = [], []
-                            for fname, test in masks[dn]:
-                                t = test & ~np.isnan(pred_all)
-                                if t.sum() == 0:
-                                    continue
-                                s = score(obs_all[t], pred_all[t], mon_all[t], x_all[t])
-                                fold_bias.append(s["bias_pct"])
-                                fold_sp.append(s["spearman_months"])
-                                frows.append(dict(fold=fname, **tags, **s))
-                            ok = ~np.isnan(pred_all)
-                            s = score(obs_all[ok], pred_all[ok], mon_all[ok], x_all[ok])
-                            s["n_nan_pred"] = int((~ok).sum())
-                            fb = np.asarray(fold_bias, float)
-                            s["bias_pct_fold_sd"] = float(np.nanstd(fb)) if np.isfinite(fb).any() else np.nan
-                            s["bias_pct_fold_maxabs"] = (float(np.nanmax(np.abs(fb)))
-                                                         if np.isfinite(fb).any() else np.nan)
-                            fs = np.asarray(fold_sp, float)
-                            s["spearman_fold_mean"] = float(np.nanmean(fs)) if np.isfinite(fs).any() else np.nan
-                            rows.append(dict(**tags, backend=backend, **s))
-                            mt = (pd.DataFrame({"period": mon_all[ok], "obs": obs_all[ok],
-                                                "pred": pred_all[ok]})
-                                  .groupby("period", as_index=False).sum())
-                            for k, v in tags.items():
-                                mt[k] = v
-                            mrows.append(mt)
-    scores = pd.DataFrame(rows)
-    fold_scores = pd.DataFrame(frows)
-    monthly = pd.concat(mrows, ignore_index=True) if mrows else pd.DataFrame()
-    summary = summarize(scores)
-    res = {"scores": scores, "fold_scores": fold_scores, "monthly_oof": monthly, "summary": summary}
+        for dn in daynights:
+            d = p[p["daynight"] == dn].reset_index(drop=True)
+            if d.empty:
+                continue
+            mo, fi = _validate_table(d, src, dn, model_list, metrics, schemes, fit, apply,
+                                     cfg, log)
+            monthly += mo
+            finfo += fi
+            del d
+    mon = pd.concat(monthly, ignore_index=True) if monthly else pd.DataFrame()
+    keys = ["scheme", "metric", "model", "modis_source", "daynight"]
+    drows, srows = [], []
+    if not mon.empty:
+        for k, g in mon.groupby(keys, sort=False):
+            ds = score_domain_years(g)
+            tags = dict(zip(keys, k))
+            drows.append(ds.assign(**tags))
+            srows.append(dict(**tags, backend=backend,
+                              n_failed_folds=int(g["n_failed_folds"].max()),
+                              **distribution(ds, g)))
+    dscores = pd.concat(drows, ignore_index=True) if drows else pd.DataFrame()
+    if not dscores.empty:
+        dscores = dscores[keys + [c for c in dscores.columns if c not in keys]]
+    scores = pd.DataFrame(srows)
+    res = {"scores": scores, "domain_scores": dscores, "monthly_oof": mon,
+           "folds": pd.DataFrame(finfo), "summary": summarize(scores)}
     out = cfg.out_dir / "validation"
     out.mkdir(parents=True, exist_ok=True)
     for k, v in res.items():
@@ -264,50 +374,49 @@ def run_validation(paired_by_source: dict[str, pd.DataFrame], cfg: Config,
 
 
 def summarize(scores: pd.DataFrame) -> pd.DataFrame:
-    """Worst case over the four schemes per (metric, model, source, daynight), then rank.
+    """Ranking under the primary scheme (leave-domain-out; falls back to spatial_block when
+    there is a single domain). Per (modis_source, daynight):
 
-    rank_score = mean of the ranks of: worst |bias|, worst r2_log_pos, worst r2_monthly,
-    worst spearman_months. ``rank_in_metric`` ranks models within a metric/source/daynight;
-    ``rank_overall`` ranks metric+model combinations within a source/daynight (the
-    "which metric to harmonize" question). Lower is better.
-    """
+    * ``rank_in_metric``: models within a metric,
+    * ``rank_overall``: metric+model combinations (raw_modis excluded),
+    by p90 |domain-year bias|, then max |bias|, then -median monthly R^2. Also reports the
+    worst p90 over all schemes (``worst_scheme_p90_abs_bias_pct``) as a robustness check."""
     if scores.empty:
         return scores
-    keys = ["eval_mode", "metric", "model", "modis_source", "daynight"]
-    g = scores.assign(abs_bias=scores["bias_pct"].abs()).groupby(keys)
-    s = pd.DataFrame({
-        "worst_abs_bias_pct": g["abs_bias"].max(),
-        "mean_abs_bias_pct": g["abs_bias"].mean(),
-        "worst_fold_abs_bias_pct": g["bias_pct_fold_maxabs"].max(),
-        "min_r2_log": g["r2_log"].min(),
-        "mean_r2_log": g["r2_log"].mean(),
-        "min_r2_log_pos": g["r2_log_pos"].min(),
-        "min_r2_raw": g["r2_raw"].min(),
-        "min_r2_monthly": g["r2_monthly"].min(),
-        "min_spearman_months": g["spearman_months"].min(),
-        "mean_mae": g["mae"].mean(),
-    }).reset_index()
-
-    def _rank_score(df: pd.DataFrame, grp: list[str]) -> pd.Series:
-        g = df.groupby(grp)
-        return (g["worst_abs_bias_pct"].rank() + g["min_r2_log_pos"].rank(ascending=False)
-                + g["min_r2_monthly"].rank(ascending=False)
-                + g["min_spearman_months"].rank(ascending=False)) / 4
-
-    grp = ["eval_mode", "metric", "modis_source", "daynight"]
-    s["rank_score"] = _rank_score(s, grp)
-    s["rank_in_metric"] = s.groupby(grp)["rank_score"].rank(method="min")
-    cal = s[s["model"] != BASELINE].copy()
-    cal["rs"] = _rank_score(cal, ["eval_mode", "modis_source", "daynight"])
-    s["rank_overall"] = cal.groupby(["eval_mode", "modis_source", "daynight"])["rs"].rank(method="min")
-    return s.sort_values(["eval_mode", "modis_source", "daynight", "metric", "rank_in_metric"]
-                         ).reset_index(drop=True)
+    prim = PRIMARY_SCHEME if (scores["scheme"] == PRIMARY_SCHEME).any() else "spatial_block"
+    s = scores[scores["scheme"] == prim].copy()
+    combo = ["metric", "model", "modis_source", "daynight"]
+    worst = scores.groupby(combo)["p90_abs_bias_pct"].max().rename("worst_scheme_p90_abs_bias_pct")
+    s = s.merge(worst.reset_index(), on=combo, how="left")
+    s["_neg_r2"] = -s["median_r2_monthly"].fillna(-np.inf)
+    sort = ["p90_abs_bias_pct", "max_abs_bias_pct", "_neg_r2"]
+    s = s.sort_values(["modis_source", "daynight"] + sort, na_position="last")
+    s["rank_in_metric"] = s.groupby(["modis_source", "daynight", "metric"]).cumcount() + 1
+    cal = s["model"] != BASELINE_RAW
+    s["rank_overall"] = np.nan
+    s.loc[cal, "rank_overall"] = s[cal].groupby(["modis_source", "daynight"]).cumcount() + 1
+    cols = ["scheme", "modis_source", "daynight", "metric", "model", "rank_overall",
+            "rank_in_metric", "p90_abs_bias_pct", "median_abs_bias_pct", "max_abs_bias_pct",
+            "worst_domain_year", "pooled_bias_pct", "median_r2_monthly", "min_r2_monthly",
+            "median_spearman_monthly", "global_r2_monthly", "worst_scheme_p90_abs_bias_pct",
+            "n_domain_years", "n_failed_folds", "backend"]
+    return s[cols].reset_index(drop=True)
 
 
-if __name__ == "__main__":  # quick manual run on a paired CSV: python -m harmonize.validate file.csv
+def best_combo(summary: pd.DataFrame, modis_source: str = "MODIS_ALL",
+               daynight: str = "ALL") -> dict | None:
+    """The rank-1 metric+model of ``summary`` for one source/daynight (my own evaluation)."""
+    s = summary[(summary["modis_source"] == modis_source) & (summary["daynight"] == daynight)
+                & (summary["rank_overall"] == 1)]
+    return None if s.empty else s.iloc[0].to_dict()
+
+
+if __name__ == "__main__":  # python -m harmonize.validate paired.parquet [out_dir]
     import sys
-    df = pd.read_csv(sys.argv[1], dtype={"cell_id": str, "period": str})
+    path = sys.argv[1]
+    df = pd.read_parquet(path) if path.endswith(".parquet") else pd.read_csv(
+        path, dtype={"cell_id": str, "period": str})
     cfg = Config(out_dir=sys.argv[2] if len(sys.argv) > 2 else "outputs")
-    res = run_validation({s: d for s, d in df.groupby("modis_source")}, cfg)
-    pd.set_option("display.width", 200)
-    print(res["summary"].query("daynight == 'ALL' and eval_mode == 'backcast'").round(3).to_string())
+    res = run_validation({s: g for s, g in df.groupby("modis_source", observed=True)}, cfg)
+    pd.set_option("display.width", 220)
+    print(res["summary"].query("daynight == 'ALL'").round(2).to_string())
