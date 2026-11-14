@@ -675,8 +675,9 @@ async function showHeat() {
   $('heatCaption').textContent = on ? `${MONTHS_LONG[moy]} ${year} · ${note} · ${ix.coverage}` : 'Fire map hidden';
 }
 /* ----- Play: the world's fire map month by month, from the first to the last month ----- */
-const play = { on: false, timer: 0, scale: null, speed: 1 };
-const SPEEDS = [1, 2, 4], MS_PER_MONTH = 350;
+// About 6 months per second: the whole record (Nov 2000 to today) plays in under a minute.
+const play = { on: false, timer: 0, scale: null, speed: 2 };
+const MS_PER_MONTH = 350;
 async function playScale() {
   if (play.scale) return play.scale;
   // The scale comes from the busiest month on record, so every month is drawn against it.
@@ -723,10 +724,6 @@ async function startPlay() {
 Promise.all([ready, new Promise(res => map.once('load', res))]).then(() => {
   if (data.error) { $('heatCaption').textContent = 'Fire map data could not be loaded'; return; }
   $('playBtn').onclick = () => (play.on ? stopPlay() : startPlay());
-  $('speedBtn').onclick = () => {
-    play.speed = SPEEDS[(SPEEDS.indexOf(play.speed) + 1) % SPEEDS.length];
-    $('speedBtn').textContent = play.speed + '×';
-  };
   const ix = data.index, fy = 2000 + Math.floor(ix.firstMonth / 12), ly = 2000 + Math.floor(ix.lastMonth / 12);
   // Start on the newest complete month.
   const startM = ix.partialMonth === ix.lastMonth ? ix.lastMonth - 1 : ix.lastMonth;
