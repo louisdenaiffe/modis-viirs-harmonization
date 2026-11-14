@@ -323,50 +323,59 @@ async function selectCountryAt(ll) {
 // ground they fade away.
 (function satellites() {
   const cv = $('sats'), ctx = cv.getContext('2d');
-  // Two vector drawings in the style of NASA's Earth-observing satellites, seen from above,
-  // flying toward +x: a Terra/Aqua-like one (gold thermal foil, one large solar wing, dish
-  // antenna) and a Suomi NPP-like one (white body, black radiators, three-panel solar wing).
+  // Two vector drawings of an Earth-observing satellite, seen at a slight angle and flying
+  // toward +x: a shaded silver cylinder (dark sensor dish in front, copper engine nozzle at
+  // the back) with two long blue solar wings on a mast across it. The second one is shorter,
+  // wrapped in gold thermal foil in the middle, with longer wings.
   const DEFS = `<defs>
-    <linearGradient id="foil" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbe7a1"/><stop offset=".3" stop-color="#d6a33a"/><stop offset=".55" stop-color="#f4d47c"/><stop offset=".8" stop-color="#b8862b"/><stop offset="1" stop-color="#e9c35c"/></linearGradient>
-    <linearGradient id="cell" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#40669f"/><stop offset=".45" stop-color="#18295a"/><stop offset="1" stop-color="#2c4a86"/></linearGradient>
-    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6f8fa"/><stop offset=".55" stop-color="#bcc3cb"/><stop offset="1" stop-color="#7c858f"/></linearGradient>
-    <linearGradient id="white" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#dfe4e9"/><stop offset="1" stop-color="#a9b1ba"/></linearGradient>
-    <radialGradient id="dish" cx=".38" cy=".35" r=".75"><stop offset="0" stop-color="#ffffff"/><stop offset=".65" stop-color="#cfd5db"/><stop offset="1" stop-color="#868f99"/></radialGradient>
-    <pattern id="grid" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="none" stroke="#9cbcf0" stroke-opacity=".38" stroke-width=".5"/></pattern>
+    <linearGradient id="cyl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#59626c"/><stop offset=".22" stop-color="#d9dee4"/><stop offset=".38" stop-color="#ffffff"/><stop offset=".62" stop-color="#c3cad2"/><stop offset=".85" stop-color="#7d8792"/><stop offset="1" stop-color="#4b535c"/></linearGradient>
+    <linearGradient id="band" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3d444c"/><stop offset=".35" stop-color="#a9b1ba"/><stop offset=".6" stop-color="#7c858f"/><stop offset="1" stop-color="#2f353b"/></linearGradient>
+    <linearGradient id="foil" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7a5414"/><stop offset=".25" stop-color="#e7bf5c"/><stop offset=".4" stop-color="#fff0b8"/><stop offset=".65" stop-color="#c8952e"/><stop offset="1" stop-color="#5e3f0c"/></linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2a5aa6"/><stop offset=".45" stop-color="#6ea6e6"/><stop offset=".55" stop-color="#8dbdf2"/><stop offset="1" stop-color="#2d5ea9"/></linearGradient>
+    <radialGradient id="dishIn" cx=".45" cy=".4" r=".7"><stop offset="0" stop-color="#3a414a"/><stop offset=".7" stop-color="#14171b"/><stop offset="1" stop-color="#050607"/></radialGradient>
+    <radialGradient id="copper" cx=".4" cy=".4" r=".75"><stop offset="0" stop-color="#ffd2a3"/><stop offset=".45" stop-color="#d07a3c"/><stop offset="1" stop-color="#5a2a10"/></radialGradient>
+    <pattern id="cells" width="5" height="5" patternUnits="userSpaceOnUse"><path d="M5 0H0V5" fill="none" stroke="#d4e7ff" stroke-opacity=".45" stroke-width=".45"/></pattern>
   </defs>`;
   const svgSat = body => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200" width="600" height="600">${DEFS}${body}</svg>`;
-  const wing = (x, y, w, h) => `<rect x="${x - 2}" y="${y - 2}" width="${w + 4}" height="${h + 4}" rx="1.5" fill="#c6ccd3" stroke="#6f7881" stroke-width=".6"/>` +
-    `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#cell)"/><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#grid)"/>` +
-    `<path d="M${x} ${y} h${w} L${x} ${y + h * 0.6} Z" fill="#ffffff" opacity=".09"/>`;
-  const SPRITES = [svgSat(`
-    <rect x="-2" y="-44" width="4" height="30" fill="url(#metal)"/>
-    ${wing(-30, -96, 60, 52)}
-    <line x1="0" y1="-96" x2="0" y2="-44" stroke="#c6ccd3" stroke-width="1.4"/><line x1="-30" y1="-70" x2="30" y2="-70" stroke="#c6ccd3" stroke-width="1.4"/>
-    <rect x="-36" y="-16" width="72" height="40" rx="2" fill="url(#foil)" stroke="#7a5516" stroke-width=".8"/>
-    <path d="M-32 -9 l10 4 l6 -3 l12 6 l9 -4 l11 5 l12 -3 l6 2 M-33 4 l8 -3 l11 6 l7 -2 l13 5 l10 -4 l12 3 M-32 16 l12 -4 l9 5 l10 -3 l11 4 l14 -3" fill="none" stroke="#fff5cc" stroke-opacity=".55" stroke-width=".7"/>
-    <path d="M-36 -16 h72 l-6 5 h-60 Z" fill="#ffffff" opacity=".18"/>
-    <rect x="22" y="-12" width="24" height="18" rx="1" fill="url(#metal)" stroke="#5b636b" stroke-width=".6"/>
-    <circle cx="34" cy="-3" r="4.6" fill="#15181d" stroke="#a2aab3" stroke-width=".9"/><circle cx="32.8" cy="-4.2" r="1.2" fill="#6f8db8"/>
-    <rect x="-16" y="-25" width="20" height="10" fill="url(#metal)" stroke="#5b636b" stroke-width=".6"/>
-    <rect x="-12" y="-23" width="5" height="6" fill="#2b3036"/>
-    <rect x="8" y="23" width="18" height="8" fill="url(#white)" stroke="#5b636b" stroke-width=".6"/>
-    <rect x="-32" y="23" width="28" height="6" fill="url(#white)" stroke="#87909a" stroke-width=".5"/>
-    <line x1="-26" y1="26" x2="-42" y2="50" stroke="#b9c0c8" stroke-width="2.2"/>
-    <g transform="rotate(-30 -46 56)"><ellipse cx="-46" cy="56" rx="15" ry="8.5" fill="url(#dish)" stroke="#78818b" stroke-width=".8"/><ellipse cx="-46" cy="56" rx="9" ry="5" fill="none" stroke="#9aa3ad" stroke-width=".5"/></g>
-    <circle cx="-46" cy="56" r="1.8" fill="#59616a"/>`),
-  svgSat(`
-    <rect x="-2" y="14" width="4" height="22" fill="url(#metal)"/>
-    ${wing(-22, 36, 44, 18)}${wing(-22, 57, 44, 18)}${wing(-22, 78, 44, 18)}
-    <rect x="-28" y="-28" width="56" height="44" rx="2" fill="url(#white)" stroke="#6f7881" stroke-width=".8"/>
-    <rect x="-25" y="-25" width="15" height="38" fill="#1d2127"/><path d="M-25 -25 h15 l-15 20 Z" fill="#ffffff" opacity=".07"/>
-    <rect x="-7" y="-25" width="10" height="38" fill="#2a2f36"/>
-    <rect x="6" y="-25" width="19" height="17" fill="url(#foil)" stroke="#7a5516" stroke-width=".6"/>
-    <path d="M7 -21 l5 2 l4 -2 l5 3 M7 -14 l6 -2 l5 3 l5 -1" fill="none" stroke="#fff5cc" stroke-opacity=".55" stroke-width=".6"/>
-    <rect x="26" y="-10" width="18" height="16" rx="1" fill="url(#metal)" stroke="#5b636b" stroke-width=".6"/>
-    <rect x="36" y="-6" width="6" height="8" fill="#15181d"/>
-    <circle cx="10" cy="4" r="8" fill="url(#metal)" stroke="#5b636b" stroke-width=".6"/><circle cx="10" cy="4" r="4.2" fill="#2b3036"/>
-    <line x1="-28" y1="-26" x2="-38" y2="-38" stroke="#b9c0c8" stroke-width="1.4"/><circle cx="-39" cy="-39" r="3" fill="url(#dish)" stroke="#78818b" stroke-width=".5"/>
-    <rect x="-20" y="-36" width="12" height="8" fill="url(#metal)" stroke="#5b636b" stroke-width=".5"/>`)
+  // One solar wing: a slightly slanted panel from the mast outward, cut into segments.
+  function wing(sign, len, segs) {
+    const y0 = sign * 17, y1 = sign * (17 + len), dx = sign * len * 0.16;
+    const pts = `${-9},${y0} ${9},${y0} ${9 + dx},${y1} ${-9 + dx},${y1}`;
+    let out = `<polygon points="${pts}" fill="#8e98a3"/>` +
+      `<polygon points="${pts}" fill="url(#panel)" transform="translate(0 ${sign * 0.8}) scale(1 1)"/>` +
+      `<polygon points="${pts}" fill="url(#cells)"/>`;
+    for (let k = 1; k < segs; k++) {
+      const t = k / segs, y = y0 + (y1 - y0) * t, x = dx * t;
+      out += `<line x1="${-9 + x}" y1="${y}" x2="${9 + x}" y2="${y}" stroke="#c9d3de" stroke-width="1.1"/>`;
+    }
+    return out + `<polygon points="${pts}" fill="none" stroke="#c9d3de" stroke-width="1"/>` +
+      `<line x1="0" y1="${y0}" x2="${dx * 0.5}" y2="${(y0 + y1) / 2}" stroke="#ffffff" stroke-opacity=".25" stroke-width="2"/>`;
+  }
+  function satellite(len, foil, wingLen, segs) {
+    const x0 = -len / 2, x1 = len / 2;
+    return svgSat(`
+      <rect x="-2.2" y="-19" width="4.4" height="38" fill="url(#band)"/>
+      ${wing(-1, wingLen, segs)}${wing(1, wingLen, segs)}
+      <rect x="${x0 - 12}" y="-9" width="14" height="18" rx="3" fill="url(#cyl)"/>
+      <ellipse cx="${x0 - 13}" cy="0" rx="4.5" ry="8" fill="url(#copper)" stroke="#3b1c0a" stroke-width=".6"/>
+      <ellipse cx="${x0 - 13.5}" cy="0" rx="2" ry="4" fill="#1a0d05"/>
+      <rect x="${x0}" y="-13" width="${len}" height="26" rx="4" fill="url(#cyl)" stroke="#3e464e" stroke-width=".6"/>
+      ${foil ? `<rect x="${-len * 0.18}" y="-13" width="${len * 0.36}" height="26" fill="url(#foil)"/>
+        <path d="M${-len * 0.16} -8 l5 2 l4 -3 l6 3 l5 -2 M${-len * 0.17} 2 l6 -2 l5 3 l4 -2 l6 3 M${-len * 0.15} 9 l7 -2 l5 2 l6 -3" fill="none" stroke="#fff6cf" stroke-opacity=".6" stroke-width=".6"/>` : ''}
+      <rect x="${x0 + len * 0.22}" y="-13" width="3.2" height="26" fill="url(#band)"/>
+      <rect x="${x0 + len * 0.7}" y="-13" width="3.2" height="26" fill="url(#band)"/>
+      <rect x="${x0 + len * 0.3}" y="-17" width="10" height="5" rx="1" fill="url(#cyl)" stroke="#4b535c" stroke-width=".5"/>
+      <rect x="${x0 + len * 0.55}" y="12" width="12" height="4.5" rx="1" fill="url(#cyl)" stroke="#4b535c" stroke-width=".5"/>
+      <circle cx="${x0 + len * 0.82}" cy="-5" r="2.2" fill="#1b1f24" stroke="#9aa3ad" stroke-width=".5"/>
+      <rect x="${x0 + len * 0.08}" y="-6" width="6" height="8" fill="#2a3037" stroke="#8b949e" stroke-width=".4"/>
+      <line x1="${x0 + len * 0.4}" y1="-17" x2="${x0 + len * 0.36}" y2="-25" stroke="#c3cad2" stroke-width=".9"/>
+      <circle cx="${x0 + len * 0.36}" cy="-25.5" r="1.4" fill="#e9edf1"/>
+      <rect x="${x1 - 2}" y="-14" width="6" height="28" rx="2" fill="url(#band)"/>
+      <ellipse cx="${x1 + 5}" cy="0" rx="6.5" ry="15" fill="#c3cad2" stroke="#4b535c" stroke-width=".7"/>
+      <ellipse cx="${x1 + 5.8}" cy="0" rx="5" ry="12.5" fill="url(#dishIn)"/>
+      <ellipse cx="${x1 + 4.6}" cy="-4" rx="1.6" ry="3.5" fill="#ffffff" opacity=".18"/>`);
+  }
+  const SPRITES = [satellite(84, false, 78, 6), satellite(62, true, 82, 7)
   ].map(svg => { const im = new Image(); im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); return im; });
   const ORBITS = [
     { r: 1.16, tilt: 62, node: -25, period: 38, dir: 1, img: 0 },

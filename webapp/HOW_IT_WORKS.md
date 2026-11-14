@@ -28,10 +28,10 @@ You spin a globe, draw a rectangle, and get a burning-activity calendar for that
 - The stars are random dots drawn on a canvas behind the globe.
 - Zoom speed is set to about 3 times MapLibre's default.
 - **Two satellites** circle the globe on tilted, invisible orbits: detailed vector drawings
-  in the style of Terra/Aqua (gold thermal foil, one large solar wing, dish antenna) and
-  Suomi NPP (white body, black radiators, three-panel solar wing), the satellites whose data
-  the app uses. They are drawn on a see-through canvas above the map that ignores clicks,
-  hide behind the globe on its far side, and fade out when you zoom in close to the ground.
+  of an Earth-observing satellite (shaded silver cylinder, dark sensor dish in front, copper
+  engine nozzle behind, two long blue solar wings on a mast). They are drawn on a see-through
+  canvas above the map that ignores clicks, hide behind the globe on its far side, and fade
+  out when you zoom in close to the ground.
 - The results panel is "frosted glass": semi-transparent with a blur of the globe behind it.
 
 ### 2. Selecting an area (`app.js` section 3)
