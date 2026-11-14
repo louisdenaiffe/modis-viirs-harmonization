@@ -78,7 +78,8 @@ const map = new maplibregl.Map({
         'heatmap-opacity': 0.92
       } },
       { id: 'labels', type: 'raster', source: 'labels' },
-      { id: 'aoi-fill', type: 'fill', source: 'aoi', filter: ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]], paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.1 } },
+      // Outline only, no tinted fill: while zooming, the globe can briefly draw a shape's coarse and
+      // detailed copies on top of each other, which made part of a big country (Russia) look whiter.
       { id: 'aoi-line', type: 'line', source: 'aoi', filter: ['in', ['geometry-type'], ['literal', ['LineString', 'MultiLineString']]], paint: { 'line-color': '#ffffff', 'line-width': 2.5 } }
     ]
   }
@@ -136,7 +137,7 @@ function setSelectMode(on) {
   mapEl.classList.toggle('selecting', on);
   lockPan(on);
 }
-// The fill and the outline are separate features. Drawing the outline from the filled shape
+// The outline is drawn from its own lines. Drawing it from the filled shape
 // would also trace the straight edges where the map cuts shapes into tiles (a line across
 // Russia at 90°E when zoomed out) and the seam where a country is split at the 180° meridian.
 function aoiFeatures(polys) {
@@ -153,7 +154,6 @@ function aoiFeatures(polys) {
     if (cur.length > 1) lines.push(cur);
   }
   return { type: 'FeatureCollection', features: [
-    { type: 'Feature', properties: {}, geometry: { type: 'MultiPolygon', coordinates: polys } },
     { type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: lines } }] };
 }
 function drawBox(b) {
