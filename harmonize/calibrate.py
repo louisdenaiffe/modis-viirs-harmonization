@@ -40,12 +40,24 @@ glm_features    log k_row = b0 + beta . z_row, z from MODIS only. Default z (DEF
 glm_regional    glm_features x a shrunken regional residual (same EB scheme as ratio_regional,
                 with the GLM prediction as exposure).
 
+glm_cell        glm_regional x one factor per grid cell x a 5 deg rescale. The cell factor is
+                r_c = (V_c + lam) / (E_c + lam), with E the glm_regional prediction, V the
+                VIIRS total of the cell and lam (shrinkage toward 1) chosen by an inner 2-fold
+                CV over even / odd training years. The rescale makes predicted = observed VIIRS
+                per 5 deg tile in training, which puts back the VIIRS mass of cells where MODIS
+                never saw anything. An unseen cell gets r = 1. Better than glm_regional for
+                n_hotspots and frp_sum in every hold-out; for fire_cell_days it is not better in
+                the long-gap back-cast test (IMPROVE.md), so it is excluded from the overall
+                recommendation (``OVERALL_PICK_EXCLUDED``).
+
 ``fire_cell_days`` predictions are capped at the number of days in the period.
 """
 from __future__ import annotations
 
+import base64
 import math
 import warnings
+import zlib
 from datetime import datetime, timezone
 
 import numpy as np
@@ -53,7 +65,7 @@ import pandas as pd
 
 from .config import DAYNIGHT, METRICS, MODIS_ALL, MODIS_CONFIGS, Config
 
-MODELS = ("ratio_global", "ratio_regional", "glm_features", "glm_regional")
+MODELS = ("ratio_global", "ratio_regional", "glm_features", "glm_regional", "glm_cell")
 MODEL_SIMPLICITY = {m: i for i, m in enumerate(MODELS)}
 K_CLIP = (0.05, 100.0)          # sane range for any multiplicative factor
 FEATURES = ("ldens", "lhpd", "lfrp", "scan", "terra", "alat", "season_sin", "season_cos",
@@ -67,6 +79,13 @@ SUPPORT_FRAC = 0.25             # a tile's k applies only where its (deg * this)
 LAM_GRID_DECADES = np.linspace(-3, 2, 11)   # lam = median tile exposure * 10**g (plus lam=0)
 RESID_CLIP = (0.1, 10.0)        # regional residual range for glm_regional
 RIDGE = 1e-6                    # relative ridge for the GLM (collinearity guard only)
+CELL_RENORM_DEG = 5.0           # glm_cell: tile of the final rescale
+CELL_RENORM_CLIP = (0.5, 2.0)   # glm_cell: range of the rescale factor
+# Not eligible for the overall (metric + model) recommendation: glm_cell does not beat
+# glm_regional on fire_cell_days when fitted on late years and scored on earlier ones
+# (long-gap back-cast test, IMPROVE.md). It is still recommended per metric where it wins.
+OVERALL_PICK_EXCLUDED = ("glm_cell",)
+PER_METRIC_EXCLUDED = (("fire_cell_days", "glm_cell"),)
 SELECTION_TOL = 0.01            # p90 |bias| within 1 point of the best counts as tied
 SELECTION_SOURCES = (MODIS_ALL,)
 SELECTION_DAYNIGHT = ("ALL",)
@@ -168,7 +187,9 @@ def _rows(df: pd.DataFrame, metric: str, prefix: str, with_y: bool) -> dict:
             (np.abs(lat) / 90.0) ** 2,
         ])
     z[~np.isfinite(z)] = np.nan
-    out = {"x": x, "lat": lat, "lon": lon, "pcode": pcode, "days": days, "z": z,
+    yr = pd.to_numeric(pd.Series(per, dtype="object").astype(str).str[:4], errors="coerce") \
+        .fillna(0).to_numpy("int64")
+    out = {"x": x, "lat": lat, "lon": lon, "pcode": pcode, "days": days, "z": z, "yr": yr,
            "dn": _str(df, "daynight", n)}
     if with_y:
         y = _num(df, "viirs_" + metric, n)
@@ -381,6 +402,59 @@ def _fit_glm(P: dict, unit_deg: float, kc, features=DEFAULT_FEATURES):
             "lost_mass_share": _f(lost), "n_units": nu}
 
 
+# =========================================================================== cell stage
+_LOG_R = (math.log(RESID_CLIP[0]), math.log(RESID_CLIP[1]))
+
+
+def _pack_cells(keys: np.ndarray, r: np.ndarray) -> dict:
+    """Sorted int cell keys + factors -> compact JSON-safe dict (zlib + base64; factors are
+    stored on a 16-bit log scale, relative step 7e-5)."""
+    order = np.argsort(keys)
+    k = np.asarray(keys, "int64")[order]
+    q = np.rint((np.log(np.clip(r[order], *RESID_CLIP)) - _LOG_R[0]) / (_LOG_R[1] - _LOG_R[0]) * 65535)
+    enc = lambda a: base64.b64encode(zlib.compress(a.tobytes(), 6)).decode("ascii")  # noqa: E731
+    return {"n": int(len(k)), "keys_delta_i4": enc(np.diff(k, prepend=0).astype("<i4")),
+            "log_r_u2": enc(q.astype("<u2"))}
+
+
+def _unpack_cells(packed: dict) -> tuple[np.ndarray, np.ndarray]:
+    dec = lambda s, dt: np.frombuffer(zlib.decompress(base64.b64decode(s)), dt)  # noqa: E731
+    keys = np.cumsum(dec(packed["keys_delta_i4"], "<i4").astype("int64"))
+    r = np.exp(_LOG_R[0] + dec(packed["log_r_u2"], "<u2").astype(float) / 65535 * (_LOG_R[1] - _LOG_R[0]))
+    return keys, r
+
+
+def _fit_cell(P: dict, e: np.ndarray, cell_deg: float) -> dict:
+    """Per-cell factor on top of the prediction ``e`` + 5 deg rescale (see module docstring)."""
+    y = P["y"]
+    ck = _tile_key(P["lat"], P["lon"], cell_deg)
+    lam, _ = _choose_lam(ck, P["yr"] % 2, e, y, np.ones(len(e)), RESID_CLIP)
+    u, inv, Et, Yt = _agg(ck, e, y)
+    keep = (Et > 0) & (u >= 0)
+    packed = _pack_cells(u[keep], _clip_k(_shrunk(Yt, Et, 1.0, lam), RESID_CLIP)[keep])
+    uk, ur = _unpack_cells(packed)                 # fit the rescale on the stored (rounded) factors
+    r = _lookup(uk, ur, ck)
+    e2 = e * np.where(np.isfinite(r), r, 1.0)
+    tk = _tile_key(P["lat"], P["lon"], CELL_RENORM_DEG)
+    u2, _, E2, Y2 = _agg(tk, e2, y)
+    ok = (E2 > 0) & (u2 >= 0)
+    s = np.clip(Y2[ok] / E2[ok], *CELL_RENORM_CLIP)
+    return {"deg": float(cell_deg), "lam": _f(lam), "cells": packed, "renorm_deg": CELL_RENORM_DEG,
+            "renorm": {_key_str(int(a)): round(float(b), 6) for a, b in zip(u2[ok], s)}}
+
+
+def _apply_cell(cell: dict, lat, lon) -> np.ndarray:
+    uk, ur = _unpack_cells(cell["cells"])
+    r = _lookup(uk, ur, _tile_key(lat, lon, cell["deg"]))
+    out = np.where(np.isfinite(r), r, 1.0)
+    if cell.get("renorm"):
+        tk = np.fromiter((_key_int(k) for k in cell["renorm"]), "int64", len(cell["renorm"]))
+        tv = np.fromiter(cell["renorm"].values(), float, len(cell["renorm"]))
+        s = _lookup(tk, tv, _tile_key(lat, lon, cell["renorm_deg"]))
+        out = out * np.where(np.isfinite(s), s, 1.0)
+    return out
+
+
 # =========================================================================== fit / apply
 def _fit_core(name, P, metric, cfg, opts) -> dict:
     kc = tuple(opts.get("k_clip", K_CLIP))
@@ -406,11 +480,26 @@ def _fit_core(name, P, metric, cfg, opts) -> dict:
             core["degenerate"] = True
             return core
         core["glm"] = glm
-        if name == "glm_regional":
+        if name in ("glm_regional", "glm_cell"):
             e = np.where(x > 0, x * np.exp(np.clip(_glm_eta(glm, P["z"]), -20, 20)), 0.0)
             core["regional"] = _fit_regional(P["lat"], P["lon"], e, y, levels, RESID_CLIP, opts.get("lam"),
                                              opts.get("cv_block", CV_BLOCK), opts.get("support_frac", SUPPORT_FRAC))
+        if name == "glm_cell":
+            e = _base_prediction(core, P, kc, metric == "fire_cell_days")
+            core["cell"] = _fit_cell(P, e, float(opts.get("cell_deg", cfg.cell_size_deg)))
+            core["cell"]["cap_days"] = metric == "fire_cell_days"
     return core
+
+
+def _base_prediction(core: dict, R: dict, kc, cap_days: bool) -> np.ndarray:
+    """glm x regional prediction per row (0 where MODIS = 0), optionally capped at the days."""
+    k = np.exp(np.clip(_glm_eta(core["glm"], R["z"]), -20, 20))
+    if "regional" in core:
+        k = k * _apply_regional(core["regional"], R["lat"], R["lon"])
+    e = np.where(R["x"] > 0, _clip_k(k, kc) * R["x"], 0.0)
+    if cap_days:
+        e = np.minimum(e, np.where(np.isfinite(R["days"]), R["days"], np.inf))
+    return e
 
 
 def fit_model(name: str, paired: pd.DataFrame, metric: str, cfg: Config | None = None, **opts) -> dict:
@@ -452,6 +541,9 @@ def _apply_core(core: dict, name: str, R: dict, kc) -> np.ndarray:
         return np.full(len(x), np.nan)
     if core.get("zero"):
         return np.zeros(len(x))
+    if "cell" in core:
+        e = _base_prediction(core, R, kc, bool(core["cell"].get("cap_days")))
+        return e * _apply_cell(core["cell"], R["lat"], R["lon"])
     if name == "ratio_global":
         k = np.full(len(x), np.nan if core.get("k") is None else float(core["k"]))
     else:
@@ -618,7 +710,8 @@ def summarize_stability(stab: pd.DataFrame) -> pd.DataFrame:
 
 
 def _recommend(summary: pd.DataFrame) -> dict:
-    cand = summary[summary["model"].isin(MODELS) & summary["p90_abs_bias"].notna()]
+    cand = summary[summary["model"].isin(MODELS) & ~summary["model"].isin(OVERALL_PICK_EXCLUDED)
+                   & summary["p90_abs_bias"].notna()]
     if cand.empty:
         return {"metric": "fire_cell_days", "model": "ratio_global",
                 "reason": "no leave-one-domain-out evaluation possible (fewer than 2 groups); "

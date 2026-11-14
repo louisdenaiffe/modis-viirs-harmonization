@@ -221,3 +221,69 @@ def test_stability_table_leave_one_domain_out():
     np.testing.assert_allclose(raw["pred_total"], raw["modis_total"])
     summ = C.summarize_stability(st)
     assert {"median_abs_bias", "p90_abs_bias"} <= set(summ.columns)
+
+
+# --------------------------------------------------------------------------- glm_cell
+def _cell_paired(seed=0, years=range(2012, 2020)):
+    """One region; half of the cells have twice the VIIRS/MODIS ratio of the other half."""
+    rng = np.random.default_rng(seed)
+    iy, ix = np.meshgrid(np.arange(8), np.arange(8), indexing="ij")
+    lat, lon = (10.125 + iy * 0.25).ravel(), (20.125 + ix * 0.25).ravel()
+    k = np.where((iy + ix).ravel() % 2 == 0, 2.0, 4.0)
+    rows = []
+    for y in years:
+        for mo in ("01", "02", "03"):
+            m = rng.poisson(200, len(lat)).astype(float)
+            v = rng.poisson(k * m).astype(float)
+            rows.append(pd.DataFrame({
+                "cell_lat": lat, "cell_lon": lon, "period": f"{y}-{mo}", "daynight": "ALL",
+                "domain": "X", "modis_source": "MODIS_ALL", "k_true": k,
+                "modis_n_hotspots": m, "viirs_n_hotspots": v,
+                "modis_fire_cell_days": np.minimum(np.ceil(m / 40), 28),
+                "viirs_fire_cell_days": np.minimum(np.ceil(v / 40), 28),
+                "modis_frp_sum": m * 30, "viirs_frp_sum": v * 10, "modis_frp_mean": 30.0,
+                "modis_scan_mean": 1.5, "modis_n_terra": np.floor(m / 2), "modis_n_aqua": m - np.floor(m / 2)}))
+    return pd.concat(rows, ignore_index=True)
+
+
+def test_glm_cell_learns_cell_factors_and_keeps_totals():
+    p = _cell_paired()
+    train, test = p[p["period"] < "2019"], p[p["period"] >= "2019"]
+    rows = _modis_rows(test)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        cell = C.fit_model("glm_cell", train, METRIC)
+        reg = C.fit_model("glm_regional", train, METRIC)
+    pc, pr = C.apply_model(cell, rows, METRIC), C.apply_model(reg, rows, METRIC)
+    truth = (test["k_true"] * test["modis_n_hotspots"]).to_numpy()
+    assert np.abs(pc - truth).sum() < 0.3 * np.abs(pr - truth).sum()     # per-cell error much lower
+    assert abs(pc.sum() / test["viirs_n_hotspots"].sum() - 1) < 0.02     # total preserved
+    back = json.loads(json.dumps(cell))                                  # exact JSON round trip
+    assert np.array_equal(C.apply_model(back, rows, METRIC), pc)
+
+
+def test_glm_cell_unseen_cell_falls_back_and_is_finite():
+    p = _cell_paired()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        cell = C.fit_model("glm_cell", p, METRIC)
+        reg = C.fit_model("glm_regional", p, METRIC)
+    far = _modis_rows(p.head(20)).assign(cell_lat=-30.125, cell_lon=100.125)   # unseen cell and tile
+    a, b = C.apply_model(cell, far, METRIC), C.apply_model(reg, far, METRIC)
+    assert np.isfinite(a).all() and np.allclose(a, b)
+    zero = _modis_rows(p.head(5)).assign(n_hotspots=0.0)
+    assert (C.apply_model(cell, zero, METRIC) == 0).all()
+
+
+def test_glm_cell_not_eligible_for_overall_pick():
+    from harmonize.pipeline import choose_recommendation
+    keys = dict(modis_source="MODIS_ALL", daynight="ALL", rank_overall=1.0)
+    summary = pd.DataFrame([
+        dict(metric="n_hotspots", model="glm_cell", p90_abs_bias_pct=10.0, **keys),
+        dict(metric="fire_cell_days", model="glm_cell", p90_abs_bias_pct=11.0, **keys),
+        dict(metric="fire_cell_days", model="glm_regional", p90_abs_bias_pct=20.0, **keys),
+        dict(metric="n_hotspots", model="glm_regional", p90_abs_bias_pct=25.0, **keys)])
+    rec = choose_recommendation({"metric": "x", "model": "y", "reason": ""}, {"summary": summary, "scores": None})
+    assert (rec["metric"], rec["model"]) == ("fire_cell_days", "glm_regional")
+    assert rec["by_metric"]["n_hotspots"]["model"] == "glm_cell"
+    assert rec["by_metric"]["fire_cell_days"]["model"] == "glm_regional"

@@ -48,20 +48,38 @@ def choose_recommendation(calib_rec: dict, val: dict) -> dict:
     s = s[s["model"] != "raw_modis"]
     if s.empty:
         return calib_rec
-    best_p90 = s["p90_abs_bias_pct"].min()
-    tied = s[s["p90_abs_bias_pct"] <= best_p90 + 1.0].copy()
-    tied["lyo_p90"] = float("nan")
+    ly = None
     if scores is not None and "scheme" in scores and (scores["scheme"] == "leave_year_out").any():
         ly = scores[(scores["scheme"] == "leave_year_out") & (scores["modis_source"] == "MODIS_ALL")
                     & (scores["daynight"] == "ALL")].set_index(["metric", "model"])["p90_abs_bias_pct"]
-        tied["lyo_p90"] = [ly.get((m, mo), float("nan")) for m, mo in zip(tied["metric"], tied["model"])]
-    best = tied.sort_values(["lyo_p90", "p90_abs_bias_pct"], na_position="last").iloc[0]
+
+    def pick(cands):
+        best_p90 = cands["p90_abs_bias_pct"].min()
+        tied = cands[cands["p90_abs_bias_pct"] <= best_p90 + 1.0].copy()
+        tied["lyo_p90"] = [float("nan") if ly is None else ly.get((m, mo), float("nan"))
+                           for m, mo in zip(tied["metric"], tied["model"])]
+        return tied.sort_values(["lyo_p90", "p90_abs_bias_pct"], na_position="last").iloc[0], tied, best_p90
+
+    # per metric: same rule, every model except the pairs that failed the long-gap back-cast test
+    by_metric = {}
+    for m, g in s.groupby("metric", sort=False):
+        g = g[[(m, mo) not in calibrate.PER_METRIC_EXCLUDED for mo in g["model"]]]
+        if len(g):
+            b = pick(g)[0]
+            by_metric[m] = {"model": b["model"], "p90_abs_bias_pct": float(b["p90_abs_bias_pct"]),
+                            "lyo_p90_abs_bias_pct": float(b["lyo_p90"])}
+    s = s[~s["model"].isin(calibrate.OVERALL_PICK_EXCLUDED)]
+    if s.empty:
+        return calib_rec
+    best, tied, best_p90 = pick(s)
     rec = {"metric": best["metric"], "model": best["model"],
            "reason": (f"Independent validation: p90 |domain-year bias| {best['p90_abs_bias_pct']:.1f}% under "
                       f"leave-one-domain-out (best {best_p90:.1f}%); tie-break on leave-one-year-out p90 "
                       f"({best['lyo_p90']:.1f}%). See validation/summary.csv and scores.csv."),
            "validation": {k: best[k] for k in best.index if k not in ("metric", "model")},
            "candidates_tied": tied[["metric", "model", "p90_abs_bias_pct", "lyo_p90"]].to_dict("records"),
+           "by_metric": by_metric,
+           "excluded_from_overall_pick": list(calibrate.OVERALL_PICK_EXCLUDED),
            "calibration_module_pick": {k: calib_rec.get(k) for k in ("metric", "model", "reason")}}
     return json.loads(json.dumps(rec, default=str))
 
