@@ -50,6 +50,7 @@ tools/
   publish_to_team.sh    copies the app to the team GitHub branch (webapp/ folder) and pushes
   deploy.sh             publishes the public website on Cloudflare (Workers static assets)
   wrangler.jsonc        Cloudflare settings; worker.js answers partial-file requests for data/
+                        and serves data/factors/ from the bundles deploy.sh makes (file limit)
   countries_50m.geojson outline used to keep only on-land detections from the API
   legacy/               first Argentina-only versions, kept for reference
 ```

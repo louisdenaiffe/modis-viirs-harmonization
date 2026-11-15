@@ -16,10 +16,40 @@ mkdir -p "$SITE"
 cp "$APP/index.html" "$APP/app.js" "$APP/icon.svg" "$SITE/"
 rsync -a "$APP/vendor" "$APP/geo" "$SITE/"
 mkdir -p "$SITE/data"
-for item in meta.json coarse.bin countries.bin blocks factors tiles heat0 heat1; do
+for item in meta.json coarse.bin countries.bin blocks tiles heat0 heat1; do
   [ -e "$APP/data/$item" ] || continue
   rsync -a --link-dest="$APP/data/" "$APP/data/$item" "$SITE/data/"
 done
+# data/factors holds one small file per 1-degree tile (about 16,700), too many for Cloudflare's
+# free plan (20,000 files per site). They are bundled here into one file per 10-degree block,
+# data/factorpacks/<block>.bin: a 4-byte length, a JSON table {"tile": [offset, length]}, then
+# the tiles' files one after the other. tools/worker.js answers the app's usual requests
+# (data/factors/<tile>.bin) with the right piece, so the app and data/factors are unchanged.
+if [ -d "$APP/data/factors" ]; then
+  python3 -I - "$APP/data/factors" "$SITE/data/factorpacks" <<'PY'
+import os, sys, json, struct, collections
+src, dst = sys.argv[1], sys.argv[2]
+os.makedirs(dst, exist_ok=True)
+packs = collections.defaultdict(list)
+for name in sorted(os.listdir(src)):
+    if not name.endswith('.bin'):
+        continue
+    la, lo = (int(v) for v in name[:-4].split('_'))
+    packs[f'{la // 10 * 10}_{lo // 10 * 10}'].append(name)
+for block, names in packs.items():
+    table, parts, off = {}, [], 0
+    for name in names:
+        with open(os.path.join(src, name), 'rb') as f:
+            b = f.read()
+        table[name[:-4]] = [off, len(b)]
+        parts.append(b)
+        off += len(b)
+    head = json.dumps(table, separators=(',', ':')).encode()
+    with open(os.path.join(dst, block + '.bin'), 'wb') as f:
+        f.write(struct.pack('<I', len(head)) + head + b''.join(parts))
+print(f'Bundled {sum(map(len, packs.values()))} factor files into {len(packs)} packs')
+PY
+fi
 # Gzip copies of the files the app reads whole (see fetchWhole in app.js): about 3x smaller.
 # -n leaves out the time stamp, so unchanged files stay identical and are not uploaded again.
 for f in "$SITE/data/coarse.bin" "$SITE/data/countries.bin" "$SITE"/data/heat0/*.bin "$SITE"/data/blocks/*.bin; do

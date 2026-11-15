@@ -214,6 +214,13 @@ outlined in the table, left out of the medians, and left out of the harmonizatio
   run locally) or the browser is too old, it reads the plain file instead.
 - The compressed copies are made by `tools/deploy.sh` in the staged site only; the data folder
   is unchanged. Files read by byte ranges (`tiles/`, `heat1/`) stay uncompressed.
+- Cloudflare's free plan allows 20,000 files per site, and `data/factors/` alone has about
+  16,700 (one per 1-degree square). So `tools/deploy.sh` bundles them, in the staged site
+  only, into one file per 10-degree block (`data/factorpacks/`, 413 files: a small table of
+  contents, then the squares' files one after the other). `tools/worker.js` answers the app's
+  usual request for `data/factors/<square>.bin` with the right piece of the bundle. The app
+  and the data folder are unchanged; the site holds about 19,000 files. Checked: 2,000 squares
+  served this way are byte-for-byte identical to the original files.
 
 ### 12. Filling the VIIRS outage days (`tools/build_world.py`, `find_gaps`)
 Some days the VIIRS satellite sends little or no data. The build finds 87 such days
