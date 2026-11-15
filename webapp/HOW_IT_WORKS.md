@@ -146,6 +146,19 @@ VIIRS-scale / MODIS-scale ratio of a country can differ by 10 to 15% between 200
   chosen years. Blue = below normal, grey = normal, red = above normal.
 - **Headline figures:** total, most active year, peak month of the season, latest month
   against its median.
+- **Margin of error** (thin green box under the figures): only the part of the total converted
+  from the other satellite can be off; measured months carry no conversion error. Each year's
+  converted part gets the typical yearly error found by the team's model tests, by how active
+  the year is (VIIRS scale, Louis's leave-one-year-out test: 4.1% from 10,000 hotspots a year,
+  6.1% from 1,000, 9.2% below; MODIS scale, Ianis's accuracy table: 4.4%, 6%, 11%, 23%, 55% for
+  10,000+, 1,000+, 100+, 10+, fewer). The errors are added as if they never cancel out, so the
+  ± is on the cautious side. Hovering the box shows the typical error of the converted part.
+- **Gas-flare warning** (thin red box, only when it matters): `geo/static_sources.json` lists
+  the 0.25° squares with steady heat sources (gas flares, refineries, steel plants, volcanic
+  lava) from Ianis's static-source mask (`APP_DATA/cell_static_share.parquet`, Aqua + Terra +
+  S-NPP, 2015, 2019 and 2021). The squares inside the selection are compared with all hotspots
+  measured there in those years; the box shows when they are at least 1% (and 20 hotspots).
+  They are still included in the counts. Sources that only existed in other years are missed.
 - **Charts:** unusual years, monthly record, fire season with its critical period (table in
   section 11).
 - The date range is chosen month by month (From / To), or with **Last 12 months** / **All**.

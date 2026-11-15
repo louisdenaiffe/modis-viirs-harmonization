@@ -1291,6 +1291,84 @@ function el(tag, props = {}, ...kids) {
   return e;
 }
 
+// --- How sure are we? (margin of error) and steady heat sources (gas flares) ---
+// Typical yearly error of a converted count, from the team's own validation, by the yearly count.
+// VIIRS scale: Louis's model, leave-one-year-out test (median error of a cell's yearly total).
+// MODIS scale: Ianis's model, accuracy table (median error of yearly totals, day + night).
+const ERR = {
+  vEq: [[10000, 4.1], [1000, 6.1], [0, 9.2]],
+  mEq: [[10000, 4.4], [1000, 6.0], [100, 11], [10, 23], [0, 55]]
+};
+const errFor = (unit, n) => ERR[unit].find(([lo]) => n >= lo)[1];
+function convertedPart(m) {
+  const r = state.result, ix = data.index;
+  if (state.unit === 'vEq') return inViirsEra(m) ? Math.max(0, r.vEq[m] - r.viirs[m]) : r.vEq[m];
+  return m < ix.aquaStart || m >= ix.modisScale.viirsFrom ? r.mEq[m] : 0;
+}
+// Errors are added up as if they never cancel out, so the margin is on the cautious side.
+function marginOfError(md) {
+  let total = 0, conv = 0, err = 0;
+  for (const r of md.rows) {
+    let c = 0;
+    for (const cell of r.cells) if (cell.exists) c += convertedPart(cell.m);
+    c = Math.min(c, r.sum);
+    total += r.sum; conv += c; err += c * errFor(state.unit, r.sum) / 100;
+  }
+  return total > 0 ? { pct: err / total * 100, convShare: conv / total * 100, rate: conv > 0 ? err / conv * 100 : 0, total } : null;
+}
+let staticP = null;
+const loadStatic = () => (staticP ||= fetch('geo/static_sources.json').then(r => r.json()).catch(() => null));
+async function staticShare(sel) {
+  const st = await loadStatic();
+  if (!st) return null;
+  const R = regionOf(sel), c = st.cells;
+  let nStatic = 0, cells = 0;
+  for (let i = 0; i < c.length; i += 4) {
+    const lo = (c[i] + 0.5) * 0.25 - 180, la = (c[i + 1] + 0.5) * 0.25 - 90;
+    const t = { lo, la };
+    const hit = R.filter(t)(0, 0) || R.filter({ lo: lo + 360, la })(0, 0);
+    if (hit) { nStatic += c[i + 2]; if (c[i + 2] >= 0.5 * c[i + 3]) cells++; }
+  }
+  // Compare with every hotspot seen in the same years in this area (both satellites, as measured).
+  const r = state.result;
+  let all = 0;
+  for (const y of st.years) for (let mo = 0; mo < 12; mo++) { const m = (y - 2000) * 12 + mo; all += (r.modis[m] || 0) + (r.viirs[m] || 0); }
+  return { nStatic, cells, all, share: all > 0 ? Math.min(100, nStatic / all * 100) : 0, years: st.years };
+}
+async function renderTrust(md) {
+  const box = $('trust'), token = state.token, sel = state.sel;
+  box.textContent = '';
+  const m = marginOfError(md);
+  if (m) {
+    const unitName = state.unit === 'vEq' ? 'VIIRS' : 'MODIS (Aqua)';
+    const line = el('div', { className: 'tline ok' });
+    if (m.convShare < 0.5) {
+      line.append(el('span', { className: 'big', textContent: '±0%' }),
+        el('b', { textContent: 'Margin of error. ' }),
+        `Every month here is measured directly by ${unitName}; nothing is converted.`);
+    } else {
+      const v = m.pct < 1 ? m.pct.toFixed(1) : nf(Math.round(m.pct));
+      line.append(el('span', { className: 'big', textContent: '±' + v + '%' }),
+        el('b', { textContent: 'Margin of error. ' }),
+        m.convShare >= 99.5 ? 'All of this total is converted from the other satellite.'
+          : `${nf(Math.round(m.convShare))}% of this total is converted from the other satellite; the rest is measured directly.`);
+      line.title = `The converted part is typically about ${m.rate < 10 ? m.rate.toFixed(1) : nf(Math.round(m.rate))}% off per year for an area this active (the team’s model tests).`;
+    }
+    box.append(line);
+  }
+  box.hidden = !box.childElementCount;
+  const g = await staticShare(sel);
+  if (!g || token !== state.token || state.sel !== sel || !box.isConnected) return;
+  if (g.share >= 1 && g.nStatic >= 20) {
+    box.append(el('div', { className: 'tline warn' },
+      el('b', { textContent: 'Gas flares and industry in this area. ' }),
+      `About ${g.share < 10 ? g.share.toFixed(1) : nf(Math.round(g.share))}% of the hotspots here (${nf(g.nStatic)} in ${g.years.join(', ')}) ` +
+      'are gas flares, refineries, steel plants or volcanic lava, not fires. They are included in the counts above' +
+      (g.cells ? `, and make up most hotspots in ${nf(g.cells)} map square${g.cells > 1 ? 's' : ''} of 25 km.` : '.')));
+    box.hidden = false;
+  }
+}
+
 function render() {
   if (!state.result) return;
   const md = state.model = buildModel(), anom = state.view === 'anom';
@@ -1314,6 +1392,8 @@ function render() {
       c.anom === null ? 'no fires normally seen in ' + MONTHS[moy]
         : pct(c.anom) + ' against the ' + MONTHS[moy] + ' median (' + nf(md.med[moy]) + ')');
   }
+
+  renderTrust(md);
 
   // --- calendar table ---
   $('calTitle').textContent = anom ? 'Difference from the monthly median' : 'Hotspots per month';

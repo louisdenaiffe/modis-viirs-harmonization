@@ -50,7 +50,8 @@ VIIRS). Days when VIIRS was down are filled with converted MODIS.
   (Shift+click, or Select then tap), month-level date range, calendar table, Counts/Anomaly
   and VIIRS/MODIS units switches (the units switch also sits by the fire map), charts (Unusual years, Monthly record, Fire season with
   critical period), world fire map with month slider, year box and Play, downloads (monthly
-  table CSV, hotspots-in-search CSV, PNG).
+  table CSV, hotspots-in-search CSV, PNG), margin-of-error box (green) and gas-flare warning
+  (red) under the headline figures.
 - Removed on purpose; do not reintroduce unless asked: per-year naive-vs-harmonized chart,
   year-to-date chart, Excel download, Play speed button, "How does the latest fire activity
   compare?" box, the Raw / Harmonized switch and its green/blue sensor colours (replaced by
