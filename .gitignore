@@ -24,3 +24,6 @@ outputs_full/**/monthly_oof.csv
 outputs_full/**/domain_scores.csv
 outputs_full/drift/drift_lyo.csv
 outputs_full/drift/drift_lyo_terra_aqua.csv
+
+# The VIIRS-scale model table read by the web app data build
+!webapp/tables/viirs_scale_cells.parquet

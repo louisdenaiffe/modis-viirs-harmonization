@@ -24,11 +24,11 @@ in a working product.
 ## Positioning
 
 The harmonized record from 2000 to today. MODIS (since 2000) and VIIRS (since 2012) are merged
-into one series in VIIRS-equivalent units, using per-tile, per-month VIIRS/MODIS ratios, so
-years before and after 2012 can be compared fairly. Days when VIIRS was down are filled with
-converted MODIS. A VIIRS / MODIS switch shows the whole record in either sensor's units
-(375 m or 1 km pixels); the MODIS-unit series is provisional filler until the team's own
-VIIRS-to-MODIS conversion is added.
+into one series, so years before and after 2012 can be compared fairly. A VIIRS / MODIS switch
+shows the whole record on either scale: VIIRS-equivalent hotspots (375 m pixels; before 2012
+MODIS is converted by the team's MODIS-to-VIIRS model) or MODIS Aqua-equivalent hotspots (1 km
+pixels; before July 2002 and from 2022 the team's VIIRS-to-MODIS model converts Terra and
+VIIRS). Days when VIIRS was down are filled with converted MODIS.
 
 ## Operating Context
 
@@ -36,8 +36,8 @@ VIIRS-to-MODIS conversion is added.
   a short presentation (slides or video) prepared separately by the team.
 - The team code lives in GitHub repo louisdenaiffe/modis-viirs-harmonization, branch
   lucille-fire-globe-v2, folder webapp/.
-- A teammate is producing a separate harmonization in Aqua-equivalent units; it will be added
-  to the app later.
+- The two conversion models come from teammates as per-cell monthly tables (HOW_IT_WORKS.md
+  section 4); the data build turns them into a weight per hotspot on each scale.
 
 ## Capabilities and Constraints
 
@@ -55,11 +55,11 @@ VIIRS-to-MODIS conversion is added.
   year-to-date chart, Excel download, Play speed button, "How does the latest fire activity
   compare?" box, the Raw / Harmonized switch and its green/blue sensor colours (replaced by
   the VIIRS / MODIS units switch; tables stay red / orange / yellow).
-- Terminology: "hotspots", "VIIRS-equivalent hotspots", "MODIS-equivalent hotspots", "VIIRS
+- Terminology: "hotspots", "VIIRS-equivalent hotspots", "MODIS Aqua-equivalent hotspots", "VIIRS
   units (375 m)", "MODIS units (1 km)", "anomaly",
   "fire season", "critical period".
-- Open: the teammates' VIIRS-to-MODIS and MODIS-to-VIIRS series will replace the
-  provisional MODIS-unit filler (`modisEq()` in `app.js`).
+- Done: the teammates' VIIRS-to-MODIS and MODIS-to-VIIRS models replaced the provisional
+  MODIS-unit filler and the per-tile ratios.
 
 ## Brand Commitments
 

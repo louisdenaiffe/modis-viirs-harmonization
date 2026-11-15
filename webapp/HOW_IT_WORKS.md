@@ -2,7 +2,8 @@
 
 A web app for the NASA Space Apps 2026 challenge "Harmonization of MODIS and VIIRS Hot Spots".
 You spin a globe, draw a rectangle, and get a burning-activity calendar for that area from
-2000 to today, with MODIS and VIIRS merged into one comparable record.
+2000 to today, with MODIS and VIIRS merged into one comparable record, shown either as VIIRS or
+as MODIS would have counted it.
 
 ## The one-minute explanation
 
@@ -12,10 +13,11 @@ You spin a globe, draw a rectangle, and get a burning-activity calendar for that
 2. **Problem.** VIIRS has sharper eyes (375 m pixels against 1 km), so it reports roughly
    3 to 4 times more hotspots than MODIS for the same fires. Putting the two records end to
    end shows a fake jump in 2012.
-3. **Harmonization.** For the years when both sensors flew together, we measure how many
-   VIIRS hotspots there are per MODIS hotspot, place by place and month by month. We multiply
-   the old MODIS counts by that ratio. Every year is then expressed in "VIIRS-equivalent
-   hotspots".
+3. **Harmonization.** The team built two conversion models on the years when both sensors flew
+   together. One turns MODIS counts into the number VIIRS would have reported (used before
+   2012); the other turns VIIRS counts into the number MODIS on the Aqua satellite would have
+   reported (used from 2022, when Aqua's orbit drifts). A switch shows the whole record on
+   either scale: "VIIRS-equivalent" or "MODIS Aqua-equivalent" hotspots.
 4. **App.** The page reads the prepared data directly in the browser (no server), adds up
    the hotspots inside your rectangle (or country) per month, and shows a calendar, an anomaly
    view, three charts, a month-by-month fire map and download buttons.
@@ -69,33 +71,66 @@ Why: a browser cannot search millions of CSV rows each time. With tiles, squares
 inside the rectangle are answered instantly from the index, and only squares cut by the
 rectangle's edge are downloaded and checked hotspot by hotspot. The result is exact.
 
-### 4. The harmonization (computed in `build_tiles.py`, applied in `app.js` section 4)
-- Reference sensor: **VIIRS**.
-- Overlap period: February 2012 to the latest month both sensors have.
-- For each square and each month of the year (12 values per square):
+### 4. The harmonization (prepared by `tools/build_world.py`, added up in `app.js`)
+The app shows the whole record on one of two scales, chosen with the **VIIRS / MODIS switch**
+(bottom-left bar and results panel, kept in step). Each scale comes from one of the team's two
+models. Both models work on a grid of 0.25 degree cells, month by month, day and night
+separately. The data build turns them into a **weight for every hotspot** on each scale, and
+the app only adds weights up. So a rectangle or a country of any shape gets the models' own
+numbers, and a cell's total is spread over the hotspots really detected in it.
 
-      ratio = (VIIRS hotspots + K x national ratio) / (MODIS hotspots + K),  K = 20
+**VIIRS scale: "what VIIRS (375 m pixels) would have counted".**
+- From February 2012: the VIIRS count itself. Each VIIRS hotspot weighs 1.
+- Before February 2012: MODIS (Terra and Aqua; Terra alone before July 2002) converted to VIIRS
+  by Louis's MODIS-to-VIIRS model (`glm_cell` on hotspot counts, METHOD.md section 6.10 in the
+  repository). The model gives the VIIRS-equivalent count of every cell, month and day/night;
+  the table is `tables/viirs_scale_cells.parquet`.
+- That model is fitted on vegetation-fire detections of nominal or high confidence (FIRMS
+  type 0). The other MODIS detections (low confidence, static sources such as gas flares) are
+  converted with the VIIRS / MODIS ratio of their 1-degree square and month of the year,
+  measured on the same kind of detections over the years both sensors flew. Where a square has
+  few of them, its ratio leans toward its 10-degree block's and the world's (K = 20).
+- Measured on a build of 2000-2024 (whole world): 20 to 24 million VIIRS-equivalent hotspots a
+  year for 2003-2011, against 17 to 22 million counted by VIIRS a year for 2013-2023. For every
+  hotspot Aqua saw, that is 6.7 to 6.9 VIIRS-equivalent hotspots in every year of 2003-2011,
+  and 6.8 to 7.1 VIIRS hotspots in 2013-2019: no step at 2012.
 
-  The K term is "shrinkage": where a square has few fires, its ratio leans toward the
-  national one, so a handful of detections cannot produce an absurd factor.
-- A second ratio, VIIRS / Terra only, is used for November 2000 to June 2002, when Aqua
-  had not been launched and MODIS saw only the morning overpass.
-- Final series: before February 2012 = MODIS count x ratio; from February 2012 = VIIRS count.
-- Measured for Argentina: the VIIRS/MODIS ratio is between 3.1 (August) and 4.0 (March).
-- **VIIRS / MODIS switch** (bottom-left bar and results panel, kept in step): shows the whole
-  record in VIIRS units (375 m pixels, the series above) or in MODIS units (1 km pixels).
-  The MODIS-unit series is **provisional filler** until the team's VIIRS-to-MODIS data is
-  added: the VIIRS-unit series times the selected area's MODIS/VIIRS ratio for each calendar
-  month, measured over Feb 2012 – Oct 2026 (the whole world's ratio where the area has none).
-  Checked on Brazil: within about 3% of the real MODIS counts every year, before and after
-  2012. To plug in the team's data, replace `modisEq()` in `app.js`. On the fire map each
-  cell is converted with its own 10-degree block's MODIS/VIIRS factor for that month, and
-  both units share one colour scale (taken from the VIIRS-unit map): in MODIS units the map
-  turns visibly dimmer, showing how much less the 1 km sensor detects, and where.
+**MODIS scale: "what MODIS on the Aqua satellite (1 km pixels) would have counted".**
+This is Ianis's VIIRS-to-MODIS model (branch `ianis_harmonization`, `harmonizare/APP_DATA`).
+- July 2002 to 2021: Aqua's own counts (with his corrections: months with missing days are
+  rescaled, and sources that never move, such as gas flares, are masked). Terra hotspots do not
+  count on this scale.
+- Before July 2002: Terra converted to Aqua.
+- From 2022, when Aqua's orbit drifts: VIIRS converted to Aqua.
+- Months after the last one in his tables (they stop in December 2025): each VIIRS hotspot is
+  weighted by the Aqua-equivalent / VIIRS ratio of its 1-degree square for that month of the
+  year, day and night apart, measured on his 2022-2025 values (same leaning toward the block and
+  the world). On VIIRS outage days Aqua's own hotspots count instead. This is a stopgap until
+  his tables are extended. Tested by hiding his 2024 and 2025 tables on five countries: 2024
+  came out 9% below his own 2024 values (2% to 12% depending on the region).
 
-Limits to be honest about: this is a statistical scaling of counts, not a physical model.
-It assumes the VIIRS/MODIS relationship of 2012-2025 also held in 2000-2011, and it does
-not correct for MODIS sensor ageing or for individual satellite outages.
+On the fire map both scales share one colour scale (taken from the VIIRS-scale map): on the
+MODIS scale the map turns visibly dimmer, showing how much less the 1 km sensor detects, and
+where.
+
+Checked on a build of 2000-2024 (370 million hotspots):
+- A selection made of whole 1-degree squares gives exactly the models' totals. A selection that
+  cuts squares differs from them by 0.1% at most in a month (five rectangles tested, months of
+  more than 50 hotspots), because the per-cell series of busy squares are stored rounded.
+- Brazil on the MODIS scale: within 0.2% of Ianis's own country table over the whole record
+  (the small gap comes from the border: he assigns whole 0.25 degree cells to a country, the
+  app cuts along the border).
+- 0.03% of the MODIS-scale total and 0.002% of the VIIRS-scale total before 2012 sit in cells
+  where this build has no hotspot to carry them (small differences between the builds' input
+  files); they are left out.
+
+Limits to be honest about: both models are statistical. They assume the VIIRS/MODIS relationship
+of the years both sensors flew also holds outside them, and they are far more reliable on a
+country or a large region than on a few cells: a small rectangle can be off by tens of percent.
+The two scales count slightly different things: the MODIS scale leaves out static sources and
+Terra, the VIIRS scale keeps every detection. And the two models do not agree everywhere: the
+VIIRS-scale / MODIS-scale ratio of a country can differ by 10 to 15% between 2003-2011 and
+2013-2021 (Brazil 6.1 then 6.9, Russia 8.7 then 10.2; Australia 8.9 then 8.8).
 
 ### 5. The panel (`app.js`)
 - **Calendar:** years as rows, months as columns, in the units chosen (VIIRS or MODIS). The
@@ -116,8 +151,8 @@ not correct for MODIS sensor ageing or for individual satellite outages.
 - The date range is chosen month by month (From / To), or with **Last 12 months** / **All**.
 
 ### 6. Downloads (`app.js`)
-- **Monthly table (CSV):** original MODIS, original VIIRS, VIIRS-equivalent and (provisional) MODIS-equivalent value for every month.
-- **Hotspots in this search (CSV):** one row per detection (latitude, longitude, date, satellite, confidence, fire power, day/night, VIIRS-equivalent weight) for the area and dates chosen. It is written piece by piece straight to disk, with a limit of 3 million rows; above that the app explains and offers the largest recent date range that fits.
+- **Monthly table (CSV):** original MODIS, original VIIRS, VIIRS-equivalent and MODIS Aqua-equivalent value for every month, and where each comes from.
+- **Hotspots in this search (CSV):** one row per detection (latitude, longitude, date, satellite, confidence, fire power, day/night, and what it counts for on each scale) for the area and dates chosen. It is written piece by piece straight to disk, with a limit of 3 million rows; above that the app explains and offers the largest recent date range that fits.
 - **PNG:** the calendar and the charts as one picture.
 
 ### 7. The current year (`tools/legacy/fetch_nrt.py`, then `tools/fetch_nrt_world.py`)
@@ -141,8 +176,8 @@ outlined in the table, left out of the medians, and left out of the harmonizatio
 - **Selection readout:** area, size and corner coordinates, live while you drag.
 
 ### 9. The fire map (month slider and year box)
-- The build writes yearly heat files (`data/heat0/`, `data/heat1/`): for every month, the
-  harmonized hotspot count in each small map cell.
+- The build writes heat files (`data/heat0/`, `data/heat1/`): for every month, the hotspot
+  count of each small map cell on both scales.
 - In the app, the bar at the bottom left has a slider with the 12 months and a box where
   you type the year. Changing either loads that year's file and redraws the map.
 - The colours come from MapLibre's "heatmap" layer: where many hotspots sit close together
@@ -160,9 +195,10 @@ outlined in the table, left out of the medians, and left out of the harmonizatio
   are kept at every level, so any selection is answered in milliseconds and only the
   pieces cut by its edge are read point by point. Checked: identical to counting every
   hotspot one by one.
-- Harmonization ratios are computed per tile and month of the year; sparse tiles lean on
-  their 10-degree block, and blocks on the global ratio (VIIRS sees 3.9 to 5.1 times more
-  hotspots than MODIS worldwide, depending on the month).
+- Every hotspot gets its weight on the two scales (section 4). Worldwide, VIIRS sees 3.9 to
+  5.1 times more hotspots than MODIS (Terra and Aqua together), depending on the month.
+- For hotspots read one by one along a selection's edge, the app looks their weights up in
+  `data/factors/`: one small file per 1-degree square, by 0.25 degree cell and month.
 - 2026: for the whole world, FIRMS returns one day per request and charges 36 of the
   5,000 credits allowed per 10 minutes, so `fetch_nrt_world.py` paces itself (about an
   hour). It keeps only points inside a country (Natural Earth outline) to match the
@@ -193,8 +229,8 @@ those months look calmer than they were. MODIS kept flying, so we use it to fill
    if its VIIRS count is less than half of what its MODIS count predicts, that block is
    marked as missing VIIRS for that day. On a full outage every block is marked; on a
    partial one (a few lost orbits) only the blocks under those orbits.
-3. **Fill.** For those block-days the harmonized count uses that day's MODIS hotspots times
-   the local VIIRS/MODIS ratio, exactly as for the years before VIIRS. Original counts are not
+3. **Fill.** For those block-days the VIIRS-scale count uses that day's MODIS hotspots with
+   their VIIRS-scale weights, exactly as for the years before VIIRS. Original counts are not
    changed.
 - Checked: on full-outage days the filled totals match the expected worldwide VIIRS count
   within about 5%. In 2026 the fill adds about 820,000 VIIRS-equivalent hotspots (5%).
@@ -213,9 +249,9 @@ those months look calmer than they were. MODIS kept flying, so we use it to fill
 
 ## Current limits
 - Data: the whole world, 2000 to 14 November 2026 (411 million hotspots).
-- The harmonization is a statistical scaling of counts, not a physical model (see section 4).
+- Both conversions are statistical models, not physical ones, and are weak on small areas (see section 4).
 - VIIRS outage days are filled with converted MODIS (section 12): a good estimate, but
-  an estimate. The ratios still include those days, which lowers them by under 1%.
+  an estimate.
 - A country's counts follow Natural Earth's 1:50m border, which differs slightly from
   NASA's own country files (0.06% for Argentina).
 

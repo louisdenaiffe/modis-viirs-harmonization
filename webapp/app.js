@@ -576,11 +576,12 @@ const ready = (async () => {
   const r = await fetch('data/meta.json');
   if (!r.ok) throw new Error('data/meta.json not found');
   const ix = data.index = await r.json(), M = ix.months;
+  if (!(ix.version >= 3)) throw new Error('data/ was made by an older tools/build_world.py: rebuild it');
   const cb = await fetchWhole('data/coarse.bin');
   data.blockList = ix.blocks.map(([la, lo], i) => ({
     la, lo, key: `${la}_${lo}`, tiles: null,
-    mod: new Uint32Array(cb, i * 12 * M, M), vii: new Uint32Array(cb, i * 12 * M + 4 * M, M),
-    harm: new Float32Array(cb, i * 12 * M + 8 * M, M)
+    mod: new Uint32Array(cb, i * 16 * M, M), vii: new Uint32Array(cb, i * 16 * M + 4 * M, M),
+    harm: new Float32Array(cb, i * 16 * M + 8 * M, M), harmM: new Float32Array(cb, i * 16 * M + 12 * M, M)
   }));
   // Lookup: day number since 2000-01-01 -> month number since 2000-01.
   const nDays = Math.ceil(M * 31) + 62;
@@ -617,32 +618,61 @@ const gapsOf = t => (t.gap !== undefined ? t.gap : (t.gap = data.gaps.get(`${Mat
 // Does a hotspot of tile t seen on this day (in month m) count as VIIRS-era? Not on an outage day.
 const viirsDay = (t, day, m) => data.era[m] === 1 && !(gapsOf(t) && t.gap.has(day));
 
+// A block file: its tiles (position, cell split k, hotspot count), then per tile the four monthly
+// series: MODIS count, VIIRS count, VIIRS-scale value, MODIS-scale value.
 function loadBlock(blk) {
-  if (!blk.tiles) blk.tiles = fetch(`data/blocks/${blk.key}.bin`).then(r => r.arrayBuffer()).then(buf => {
-    const M = data.index.months, dv = new DataView(buf), n = dv.getUint32(0, true), S = 4 + 108 * n;
+  if (!blk.tiles) blk.tiles = fetchWhole(`data/blocks/${blk.key}.bin`).then(buf => {
+    const M = data.index.months, dv = new DataView(buf), n = dv.getUint32(0, true), S = 4 + 12 * n;
     return Array.from({ length: n }, (_, i) => {
-      const o = 4 + 108 * i, la = dv.getInt16(o, true), lo = dv.getInt16(o + 2, true);
-      return { la, lo, key: `${la}_${lo}`, k: dv.getUint16(o + 4, true), n: dv.getUint32(o + 8, true), head: null,
-        rM: new Float32Array(buf, o + 12, 12), rT: new Float32Array(buf, o + 60, 12),
-        mod: new Uint32Array(buf, S + i * 12 * M, M), vii: new Uint32Array(buf, S + i * 12 * M + 4 * M, M),
-        harm: new Float32Array(buf, S + i * 12 * M + 8 * M, M) };
+      const o = 4 + 12 * i, la = dv.getInt16(o, true), lo = dv.getInt16(o + 2, true), q = S + i * 16 * M;
+      return { la, lo, key: `${la}_${lo}`, k: dv.getUint16(o + 4, true), n: dv.getUint32(o + 8, true), head: null, fac: null, F: null,
+        mod: new Uint32Array(buf, q, M), vii: new Uint32Array(buf, q + 4 * M, M),
+        harm: new Float32Array(buf, q + 8 * M, M), harmM: new Float32Array(buf, q + 12 * M, M) };
     });
   });
   return blk.tiles;
 }
-// A split tile starts with a directory (where each cell's hotspots begin) and per-cell monthly counts.
+// A split tile starts with a directory (where each cell's hotspots begin) and per-cell monthly
+// series: MODIS and VIIRS counts, then the two scales stored as round(64 * sqrt(value)).
 function loadHead(t) {
   if (!t.head) {
-    const k2 = t.k * t.k, M = data.index.months, G = (data.index.gapMonths || []).length;
-    const base = 4 * (k2 + 1) + 4 * k2 * M, len = base + 4 * k2 * G;
+    const k2 = t.k * t.k, M = data.index.months, a = 4 * (k2 + 1), n = k2 * M, len = a + 8 * n;
     t.head = fetchRange(`data/tiles/${t.key}.bin`, 0, len).then(buf => ({
-      len, G, dir: new Uint32Array(buf, 0, k2 + 1),
-      mod: new Uint16Array(buf, 4 * (k2 + 1), k2 * M), vii: new Uint16Array(buf, 4 * (k2 + 1) + 2 * k2 * M, k2 * M),
-      // Per cell and outage month: VIIRS and MODIS hotspots seen on that block's outage days.
-      vgap: new Uint16Array(buf, base, k2 * G), mgap: new Uint16Array(buf, base + 2 * k2 * G, k2 * G)
+      len, dir: new Uint32Array(buf, 0, k2 + 1),
+      mod: new Uint16Array(buf, a, n), vii: new Uint16Array(buf, a + 2 * n, n),
+      hv: new Uint16Array(buf, a + 4 * n, n), hm: new Uint16Array(buf, a + 6 * n, n)
     }));
   }
   return t.head;
+}
+const unpack = u => u * u / 4096;
+// The weights of a tile's hotspots, needed when they are read one by one: n, then n sorted keys
+// ((quarter-degree cell * months + month) * 16 + kind), then n weights. Kinds 0-3: a MODIS
+// hotspot on the VIIRS scale when VIIRS is not there (kept * 2 + night, kept = type 0 and
+// confidence nominal or high); kinds 4-9: on the MODIS scale (4 + satellite * 2 + night).
+function loadFactors(t) {
+  if (!t.fac) t.fac = fetch(`data/factors/${t.key}.bin`).then(r => (r.ok ? r.arrayBuffer() : null)).then(buf => {
+    const n = buf && buf.byteLength >= 4 ? new Uint32Array(buf, 0, 1)[0] : 0;
+    return (t.F = { n, k: new Uint32Array(n ? buf : 0, n ? 4 : 0, n), v: new Float32Array(n ? buf : 0, n ? 4 + 4 * n : 0, n) });
+  });
+  return t.fac;
+}
+function factor(F, key) {
+  let a = 0, b = F.n - 1;
+  while (a <= b) { const c = (a + b) >> 1, k = F.k[c]; if (k === key) return F.v[c]; if (k < key) a = c + 1; else b = c - 1; }
+  return 0;
+}
+// What one hotspot of tile t counts for on the two scales (the data build's rules; loadFactors(t)
+// first). VIIRS scale: a VIIRS hotspot counts 1, a MODIS hotspot only when VIIRS was not there.
+// MODIS scale: only the satellite the month is taken from counts; in months after the team's
+// VIIRS-to-MODIS tables end, Aqua stands in for VIIRS on VIIRS outage days.
+const W = { v: 0, m: 0 };
+function pointWeights(t, la, lo, day, m, fl) {
+  const sat = fl & 3, night = fl >> 2 & 1, kept = (fl >> 3 & 3) === 0 && (fl >> 5 & 3) >= 1 ? 2 : 0, vd = viirsDay(t, day, m);
+  const base = ((((la * 4) >> 16) * 4 + ((lo * 4) >> 16)) * data.index.months + m) * 16;
+  W.v = sat === 2 ? +vd : vd ? 0 : factor(t.F, base + kept + night);
+  W.m = m > data.index.modisScale.last && gapsOf(t) && t.gap.has(day) ? +(sat === 1) : factor(t.F, base + 4 + sat * 2 + night);
+  return W;
 }
 // A selection that crosses the antimeridian is handled as two ordinary boxes.
 const boxesOf = s => s.east >= s.west ? [s] : [{ ...s, east: 180 }, { ...s, west: -180 }];
@@ -722,11 +752,11 @@ async function walk(sel, wantPoints, h, onProgress) {
     const rb = R.rel(blk.lo, blk.la, 10);
     if (!rb) continue;
     hit++;
-    if (rb === 2 && !wantPoints && !h.perTile) { h.series(blk.mod, blk.vii, blk.harm, null); continue; }
+    if (rb === 2 && !wantPoints) { h.series(blk.mod, blk.vii, blk.harm, blk.harmM); continue; }
     for (const t of await loadBlock(blk)) {
       const rt = rb === 2 ? 2 : R.rel(t.lo, t.la, 1);
       if (!rt) continue;
-      if (rt === 2 && !wantPoints) { h.series(t.mod, t.vii, t.harm, t); continue; }
+      if (rt === 2 && !wantPoints) { h.series(t.mod, t.vii, t.harm, t.harmM); continue; }
       const keep = rt === 2 ? null : R.filter(t);
       if (t.k === 1) { jobs.push({ t, start: 0, end: t.n * REC, keep }); continue; }
       const head = await loadHead(t), k = t.k, size = 65536 / k;
@@ -747,7 +777,7 @@ async function walk(sel, wantPoints, h, onProgress) {
   }
   let done = 0;
   await pool(jobs, 8, async j => {
-    const buf = await fetchRange(`data/tiles/${j.t.key}.bin`, j.start, j.end);
+    const [buf] = await Promise.all([fetchRange(`data/tiles/${j.t.key}.bin`, j.start, j.end), loadFactors(j.t)]);
     h.points(j.t, new DataView(buf), Math.floor(buf.byteLength / REC), j.keep);
     if (onProgress) onProgress(++done, jobs.length);
   });
@@ -757,112 +787,71 @@ async function walk(sel, wantPoints, h, onProgress) {
 // Monthly totals of every country, worked out in advance (see precomputeCountries below), so a
 // country click is instant online instead of reading hundreds of files along its border.
 // Layout: n countries, M months, total hotspots (to spot an out-of-date file), then for each
-// country three runs of M floats: MODIS, VIIRS, harmonized.
+// country four runs of M floats: MODIS count, VIIRS count, VIIRS-scale value, MODIS-scale value.
 let countryTotalsP = null;
 function loadCountryTotals() {
   if (!countryTotalsP) countryTotalsP = fetchWhole('data/countries.bin').catch(() => null).then(buf => {
     if (!buf || buf.byteLength < 16) return null;
     const dv = new DataView(buf), n = dv.getUint32(0, true), M = dv.getUint32(4, true);
-    if (M !== data.index.months || dv.getFloat64(8, true) !== data.index.hotspots || buf.byteLength !== 16 + n * 3 * M * 4) return null;
-    return i => (i < n ? new Float32Array(buf, 16 + i * 3 * M * 4, 3 * M) : null);
+    if (M !== data.index.months || dv.getFloat64(8, true) !== data.index.hotspots || buf.byteLength !== 16 + n * 4 * M * 4) return null;
+    return i => (i < n ? new Float32Array(buf, 16 + i * 4 * M * 4, 4 * M) : null);
   }).catch(() => null);
   return countryTotalsP;
 }
 let precomputing = false;
 
 /* ----- Units: every month counted as VIIRS (375 m pixels) or as MODIS (1 km pixels) would see it ----- */
-// vEq: the record built here. Before Feb 2012 MODIS is converted to VIIRS with per-tile ratios;
-//      from Feb 2012 it is VIIRS itself (outage days filled with converted MODIS).
-// mEq: the same record in MODIS units. PROVISIONAL FILLER until the team's VIIRS -> MODIS data
-//      is added: the vEq record times this area's MODIS/VIIRS ratio for each calendar month,
-//      measured over the years both sensors flew. Before 2012 this gives back (about) the MODIS
-//      counts; from 2012 it is VIIRS converted to MODIS. Replace modisEq() with the team's series.
+// Both records come ready from the data build (tools/build_world.py), which gives every hotspot
+// a weight on each scale from the team's two models; the app only adds weights up.
+// vEq: before Feb 2012, MODIS converted to VIIRS (Louis's MODIS-to-VIIRS model); from Feb 2012
+//      VIIRS itself (outage days filled with converted MODIS).
+// mEq: what MODIS on Aqua would count (Ianis's VIIRS-to-MODIS model): Aqua's own counts from
+//      July 2002 to 2021, Terra converted to Aqua before, VIIRS converted to Aqua from 2022.
 const UNITS = {
   vEq: { name: 'VIIRS', px: '375 m', long: 'VIIRS-equivalent hotspots' },
-  mEq: { name: 'MODIS', px: '1 km', long: 'MODIS-equivalent hotspots' }
+  mEq: { name: 'MODIS', px: '1 km', long: 'MODIS Aqua-equivalent hotspots' }
 };
-function modisFactors(mod, vEq, fallback) {
-  const ix = data.index, a = new Float64Array(12), b = new Float64Array(12);
-  for (let m = ix.overlap[0]; m <= ix.overlap[1]; m++) { a[m % 12] += mod[m]; b[m % 12] += vEq[m]; }
-  return [...a].map((x, i) => (b[i] > 0 && x > 0 ? x / b[i] : fallback ? fallback[i] : 0));
-}
-let worldK = null;                                   // the whole world's factors, for the fire map
-function worldFactors() {
-  if (!worldK) {
-    const M = data.index.months, mod = new Float64Array(M), v = new Float64Array(M);
-    for (const b of data.blockList) for (let m = 0; m < M; m++) { mod[m] += b.mod[m]; v[m] += b.harm[m]; }
-    worldK = modisFactors(mod, v, null);
-  }
-  return worldK;
-}
-// Per 10-degree block, for the fire map in MODIS units (same filler method, block by block).
-const blockK = new Map();
-function blockFactors(blk) {
-  if (!blockK.has(blk.key)) blockK.set(blk.key, modisFactors(blk.mod, blk.harm, worldFactors()));
-  return blockK.get(blk.key);
-}
-const blockAt = new Map();                           // "la_lo" -> block, for the world map cells
-function blockOf(x, y) {
-  if (!blockAt.size) for (const b of data.blockList) blockAt.set(b.key, b);
-  return blockAt.get(`${Math.floor(y / 10) * 10}_${Math.floor(x / 10) * 10}`);
-}
-function modisEq(out) {
-  const k = modisFactors(out.modis, out.harm, worldFactors());
-  out.vEq = out.harm;
-  out.mEq = out.harm.map((v, m) => v * k[m % 12]);
-  return out;
-}
 
 async function query(sel, onProgress) {
   const ix = data.index, M = ix.months, era = data.era;
   const out = { modis: new Float64Array(M), viirs: new Float64Array(M), raw: new Float64Array(M),
-    harm: new Float64Array(M), check: new Float64Array(M), tiles: 0 };
+    vEq: new Float64Array(M), mEq: new Float64Array(M), tiles: 0 };
   if (sel.poly && sel.poly.i !== undefined && !precomputing) {
     const get = await loadCountryTotals(), f = get && get(sel.poly.i);
     if (f) {
       for (let m = 0; m < M; m++) {
-        out.modis[m] = f[m]; out.viirs[m] = f[M + m]; out.harm[m] = f[2 * M + m];
+        out.modis[m] = f[m]; out.viirs[m] = f[M + m]; out.vEq[m] = f[2 * M + m]; out.mEq[m] = f[3 * M + m];
         out.raw[m] = era[m] ? out.viirs[m] : out.modis[m];
       }
-      out.tiles = out.harm.some(v => v > 0) ? 1 : 0;
-      return modisEq(out);
+      out.tiles = out.vEq.some(v => v > 0) || out.mEq.some(v => v > 0) ? 1 : 0;
+      return out;
     }
   }
-  // check = MODIS converted to VIIRS units for every month, including the VIIRS years, so
-  // the two can be compared where both sensors flew (a test of the harmonization).
-  // The harmonization: MODIS counts are multiplied by the tile's VIIRS/MODIS ratio for that
-  // month of the year; months in the VIIRS era use the VIIRS count as it is.
-  const ratio = (t, m) => (m < ix.aquaStart ? t.rT : t.rM)[m % 12];
   out.tiles = await walk(sel, false, {
-    perTile: true,
-    series(mod, vii, harm, t) {
+    series(mod, vii, hv, hm) {
       for (let m = 0; m < M; m++) {
-        out.modis[m] += mod[m]; out.viirs[m] += vii[m]; out.harm[m] += harm[m]; out.raw[m] += era[m] ? vii[m] : mod[m];
-        out.check[m] += era[m] ? mod[m] * t.rM[m % 12] : harm[m];
+        out.modis[m] += mod[m]; out.viirs[m] += vii[m]; out.raw[m] += era[m] ? vii[m] : mod[m];
+        out.vEq[m] += hv[m]; out.mEq[m] += hm[m];
       }
     },
     cell(t, head, c) {
       for (let m = 0, o = c * M; m < M; m++, o++) {
         const mod = head.mod[o], v = head.vii[o];
-        out.modis[m] += mod; out.viirs[m] += v; out.check[m] += mod * ratio(t, m);
-        if (era[m]) {
-          out.raw[m] += v; out.harm[m] += v;
-          // VIIRS outage days in this month: their MODIS hotspots, converted, replace VIIRS.
-          const g = data.gapIdx[m];
-          if (g >= 0) { const o2 = c * head.G + g; out.harm[m] += head.mgap[o2] * ratio(t, m) - head.vgap[o2]; }
-        } else { out.raw[m] += mod; out.harm[m] += mod * ratio(t, m); }
+        out.modis[m] += mod; out.viirs[m] += v; out.raw[m] += era[m] ? v : mod;
+        out.vEq[m] += unpack(head.hv[o]); out.mEq[m] += unpack(head.hm[o]);
       }
     },
     points(t, dv, n, keep) {
       for (let i = 0, o = 0; i < n; i++, o += REC) {
-        if (keep && !keep(dv.getUint16(o, true), dv.getUint16(o + 2, true))) continue;
-        const day = dv.getUint16(o + 4, true), m = data.dayMonth[day], vd = viirsDay(t, day, m);
-        if ((dv.getUint8(o + 8) & 3) === 2) { out.viirs[m]++; if (era[m]) out.raw[m]++; if (vd) out.harm[m]++; }
-        else { out.modis[m]++; out.check[m] += ratio(t, m); if (!era[m]) out.raw[m]++; if (!vd) out.harm[m] += ratio(t, m); }
+        const la = dv.getUint16(o, true), lo = dv.getUint16(o + 2, true);
+        if (keep && !keep(la, lo)) continue;
+        const day = dv.getUint16(o + 4, true), m = data.dayMonth[day], fl = dv.getUint8(o + 8), w = pointWeights(t, la, lo, day, m, fl);
+        if ((fl & 3) === 2) { out.viirs[m]++; if (era[m]) out.raw[m]++; } else { out.modis[m]++; if (!era[m]) out.raw[m]++; }
+        out.vEq[m] += w.v; out.mEq[m] += w.m;
       }
     }
   }, onProgress);
-  return modisEq(out);
+  return out;
 }
 
 /* ----- Fire map: month slider + year box drive a red heat layer on the globe ----- */
@@ -890,19 +879,16 @@ function getHeat0(m) {
   }
   return heat0Cache.get(m);
 }
-// Each map cell keeps its VIIRS-unit weight (v) and its weight in the chosen units (w). In MODIS
-// units every cell is converted with its own 10-degree block's MODIS/VIIRS factor for the month.
+// Each map cell keeps its VIIRS-scale value (v, which sets the colour scale) and its value in
+// the chosen units (w). Both come from the data build.
 async function heatFeatures(m, blocks) {
-  const ix = data.index, feats = [], moy = m % 12, modis = state.unit === 'mEq';
-  const factor = blk => (modis ? (blk ? blockFactors(blk)[moy] : worldFactors()[moy]) : 1);
-  const push = (x, y, v, k) => feats.push({ type: 'Feature', properties: { w: v * k, v }, geometry: { type: 'Point', coordinates: [x, y] } });
+  const ix = data.index, feats = [], modis = state.unit === 'mEq';
+  const push = (x, y, v, vm) => feats.push({ type: 'Feature', properties: { w: modis ? vm : v, v }, geometry: { type: 'Point', coordinates: [x, y] } });
   if (!blocks) {
-    const buf = await getHeat0(m);
-    const u = new Uint16Array(buf), f = new Float32Array(buf);
-    for (let i = 0; i < f.length; i += 2) {
-      const x = (u[2 * i] + 0.5) * ix.heat0 - 180, y = (u[2 * i + 1] + 0.5) * ix.heat0 - 90;
-      push(x, y, f[i + 1], factor(blockOf(x, y)));
-    }
+    const dv = new DataView(await getHeat0(m));
+    for (let o = 0; o + 12 <= dv.byteLength; o += 12)
+      push((dv.getUint16(o, true) + 0.5) * ix.heat0 - 180, (dv.getUint16(o + 2, true) + 0.5) * ix.heat0 - 90,
+        dv.getFloat32(o + 4, true), dv.getFloat32(o + 8, true));
     return feats;
   }
   await pool(blocks, 6, async blk => {
@@ -910,9 +896,10 @@ async function heatFeatures(m, blocks) {
     if (!heat.heads.has(blk.key)) heat.heads.set(blk.key, fetchRange(url, 0, hl).then(b => new Uint32Array(b)));
     const offs = await heat.heads.get(blk.key);
     if (offs[m + 1] === offs[m]) return;
-    const dv = new DataView(await fetchRange(url, hl + offs[m] * 4, hl + offs[m + 1] * 4)), k = factor(blk);
-    for (let o = 0; o < dv.byteLength; o += 4)
-      push(blk.lo + (dv.getUint8(o) + 0.5) * ix.heat1, blk.la + (dv.getUint8(o + 1) + 0.5) * ix.heat1, dv.getUint16(o + 2, true) / 8, k);
+    const dv = new DataView(await fetchRange(url, hl + offs[m] * 6, hl + offs[m + 1] * 6));
+    for (let o = 0; o + 6 <= dv.byteLength; o += 6)
+      push(blk.lo + (dv.getUint8(o) + 0.5) * ix.heat1, blk.la + (dv.getUint8(o + 1) + 0.5) * ix.heat1,
+        dv.getUint16(o + 2, true) / 8, dv.getUint16(o + 4, true) / 8);
   });
   return feats;
 }
@@ -932,14 +919,14 @@ async function showHeat() {
   if (hasData) {
     try { feats = await heatFeatures(m, blocks); } catch { feats = []; }
     if (token !== heat.token) return;
-    const total = data.blockList.reduce((a, b) => a + b.harm[m], 0) * (state.unit === 'mEq' ? worldFactors()[moy] : 1);
+    const total = data.blockList.reduce((a, b) => a + (state.unit === 'mEq' ? b.harmM : b.harm)[m], 0);
     note = total;
     const p = blocks ? HEAT_PAINT.detail : HEAT_PAINT.world;
     // Strength relative to the busiest places this month (99th percentile), square-rooted so
     // medium activity still shows: quiet areas glow dark red, the busiest ones yellow.
     // The scale always comes from the VIIRS-unit weights, so switching to MODIS units shows how
     // much less MODIS detects (and where) instead of rescaling it to look the same.
-    const ws = feats.map(f => f.properties.v).sort((a, b) => a - b);
+    const ws = feats.map(f => f.properties.v).filter(v => v > 0).sort((a, b) => a - b);
     // While the animation plays, one fixed scale for every month, so quiet months look
     // quiet and big fire seasons stand out; otherwise each month uses its own scale.
     const p99 = play.on && play.scale && !blocks ? play.scale : (ws.length ? ws[Math.floor(ws.length * 0.99)] || 1 : 1);
@@ -956,9 +943,9 @@ async function showHeat() {
 function mapMonth() { return (+$('heatYear').value - 2000) * 12 + +$('heatMonth').value; }
 // Where a month's number comes from, in the chosen units.
 function sourceOf(m) {
-  const viirs = inViirsEra(m);
-  return state.unit === 'vEq' ? (viirs ? 'VIIRS data' : 'MODIS data converted to VIIRS')
-    : (viirs ? 'VIIRS data converted to MODIS' : 'MODIS data');
+  const ix = data.index;
+  return state.unit === 'vEq' ? (inViirsEra(m) ? 'VIIRS data' : 'MODIS data converted to VIIRS')
+    : m < ix.aquaStart ? 'Terra data converted to Aqua' : m < ix.modisScale.viirsFrom ? 'Aqua data' : 'VIIRS data converted to Aqua';
 }
 function showMonthOnMap(m) {
   if (play.on) stopPlay();
@@ -1006,8 +993,8 @@ async function playScale() {
   const M = data.index.months, tot = new Float64Array(M);
   for (const b of data.blockList) for (let m = 0; m < M; m++) tot[m] += b.harm[m];
   const busiest = tot.indexOf(Math.max(...tot));
-  const f = new Float32Array(await getHeat0(busiest)), ws = [];
-  for (let i = 1; i < f.length; i += 2) ws.push(f[i]);
+  const dv = new DataView(await getHeat0(busiest)), ws = [];
+  for (let o = 0; o + 12 <= dv.byteLength; o += 12) { const v = dv.getFloat32(o + 4, true); if (v > 0) ws.push(v); }
   ws.sort((a, b) => a - b);
   return (play.scale = ws[Math.floor(ws.length * 0.99)] || 1);
 }
@@ -1300,8 +1287,8 @@ function render() {
   const unit = UNITS[state.unit].long;
 
   $('modeNote').textContent = state.unit === 'vEq'
-    ? 'Every month counted as VIIRS (375 m pixels) would see it. Before February 2012, when only MODIS flew, the MODIS counts are converted to VIIRS.'
-    : 'Every month counted as MODIS (1 km pixels) would see it. From February 2012 the VIIRS counts are converted to MODIS. Provisional: this conversion is a stand-in until the team’s own VIIRS-to-MODIS data is added.';
+    ? 'Every month counted as VIIRS (375 m pixels) would see it. Before February 2012, when only MODIS flew, the MODIS counts (Terra and Aqua) are converted to VIIRS.'
+    : 'Every month counted as MODIS on the Aqua satellite (1 km pixels) would see it. July 2002 to 2021 are Aqua’s own counts. Earlier months are converted from Terra, and months from 2022, when Aqua’s orbit drifts, from VIIRS.';
 
   // --- headline figures ---
   const k = $('kpis'); k.textContent = '';
@@ -1386,7 +1373,7 @@ function render() {
     ? `This search holds ${nf(rawPts)} hotspots, too many for one file (the limit is ${nf(MAX_POINTS)}).`
     : `The hotspot file will contain ${nf(rawPts)} rows, about ${mb} MB (every MODIS and VIIRS detection in the area and dates chosen).`;
   $('sourceNote').textContent = `Source: NASA FIRMS archive (MODIS Collection 6.1, VIIRS S-NPP 375 m), ${md.ix.coverage}, ` +
-    `${md.ix.firstDate} to ${md.ix.lastDate}. VIIRS/MODIS ratios measured over Feb 2012 – ${MONTHS[md.ix.overlap[1] % 12]} ${2000 + Math.floor(md.ix.overlap[1] / 12)}.` +
+    `${md.ix.firstDate} to ${md.ix.lastDate}. MODIS and VIIRS are converted into each other by the team’s two models, fitted on the years both sensors flew (from 2012).` +
     ((md.ix.gapDays || []).length ? ` VIIRS outage days (${md.ix.gapDays.length}, e.g. ${md.ix.gapDays.slice(-3).join(', ')}) are filled with converted MODIS.` : '');
 }
 
@@ -1701,13 +1688,14 @@ const fileStem = () => {
 };
 
 $('dlTable').onclick = () => runDownload($('dlTable'), `${fileStem()}_monthly.csv`, async write => {
-  const r = state.result, md = state.model;
+  const r = state.result, md = state.model, ix = data.index;
   const out = tableSink(write);
-  out.begin(['year', 'month', 'modis_original', 'viirs_original', 'viirs_equivalent', 'modis_equivalent_provisional', 'source', 'complete_month']);
+  out.begin(['year', 'month', 'modis_original', 'viirs_original', 'viirs_equivalent', 'modis_aqua_equivalent', 'viirs_equivalent_source', 'modis_aqua_equivalent_source', 'complete_month']);
   const rows = [];
   for (const row of md.rows) for (const c of row.cells) if (c.exists) {
     rows.push([row.y, c.m % 12 + 1, r.modis[c.m], r.viirs[c.m], +r.vEq[c.m].toFixed(1), +r.mEq[c.m].toFixed(1),
-      inViirsEra(c.m) ? (data.gapIdx[c.m] >= 0 ? 'VIIRS + MODIS scaled on VIIRS outage days' : 'VIIRS') : 'MODIS scaled', c.partial ? 'no' : 'yes']);
+      inViirsEra(c.m) ? (data.gapIdx[c.m] >= 0 ? 'VIIRS + MODIS converted on VIIRS outage days' : 'VIIRS') : 'MODIS converted to VIIRS',
+      c.m < ix.aquaStart ? 'Terra converted to Aqua' : c.m < ix.modisScale.viirsFrom ? 'Aqua' : 'VIIRS converted to Aqua', c.partial ? 'no' : 'yes']);
   }
   out.rows(rows);
   await out.end();
@@ -1734,7 +1722,7 @@ $('dlPoints').onclick = () => state.rawPoints > MAX_POINTS ? tooManyPoints() : r
     const m0 = state.m0, m1 = state.m1;
     const SAT = ['Terra', 'Aqua', 'Suomi NPP'], CONF = ['low', 'nominal', 'high'];
     const out = tableSink(write);
-    out.begin(['latitude', 'longitude', 'acq_date', 'satellite', 'instrument', 'confidence', 'frp', 'daynight', 'type', 'viirs_equivalent_weight']);
+    out.begin(['latitude', 'longitude', 'acq_date', 'satellite', 'instrument', 'confidence', 'frp', 'daynight', 'type', 'viirs_equivalent_weight', 'modis_aqua_equivalent_weight']);
     await walk(state.sel, true, {
       points(t, dv, n, keep) {
         const rows = [];
@@ -1743,12 +1731,12 @@ $('dlPoints').onclick = () => state.rawPoints > MAX_POINTS ? tooManyPoints() : r
           if (keep && !keep(la, lo)) continue;
           const day = dv.getUint16(o + 4, true), m = data.dayMonth[day];
           if (m < m0 || m > m1) continue;
-          const fl = dv.getUint8(o + 8), sat = fl & 3, viirs = sat === 2, era = viirsDay(t, day, m);
-          // Weight = this detection's contribution to the harmonized count.
-          const weight = viirs ? (era ? 1 : 0) : era ? 0 : +(m < ix.aquaStart ? t.rT : t.rM)[m % 12].toFixed(4);
+          const fl = dv.getUint8(o + 8), sat = fl & 3, viirs = sat === 2, w = pointWeights(t, la, lo, day, m, fl);
+          // Weights = what this detection counts for on each scale.
+          const weight = +w.v.toFixed(4), weightM = +w.m.toFixed(4);
           rows.push([+(t.la + la / 65535).toFixed(5), +(t.lo + lo / 65535).toFixed(5),
             { date: new Date(Date.UTC(2000, 0, 1 + day)).toISOString().slice(0, 10) },
-            SAT[sat], viirs ? 'VIIRS' : 'MODIS', CONF[fl >> 5 & 3], dv.getUint16(o + 6, true) / 10, fl & 4 ? 'N' : 'D', fl >> 3 & 3, weight]);
+            SAT[sat], viirs ? 'VIIRS' : 'MODIS', CONF[fl >> 5 & 3], dv.getUint16(o + 6, true) / 10, fl & 4 ? 'N' : 'D', fl >> 3 & 3, weight, weightM]);
         }
         out.rows(rows);
       }
@@ -1816,15 +1804,15 @@ async function precomputeCountries() {
   if (data.error) return;
   precomputing = true;
   const list = await loadCountries(), M = data.index.months;
-  const buf = new ArrayBuffer(16 + list.length * 3 * M * 4), dv = new DataView(buf);
+  const buf = new ArrayBuffer(16 + list.length * 4 * M * 4), dv = new DataView(buf);
   dv.setUint32(0, list.length, true); dv.setUint32(4, M, true); dv.setFloat64(8, data.index.hotspots, true);
   const t0 = performance.now();
   for (const c of list) {
     if (c.area === undefined) c.area = countryArea(c);
     $('heatCaption').textContent = `Counting countries… ${c.i + 1}/${list.length}: ${c.n}`;
     const r = await query({ west: c.b[0], south: c.b[1], east: c.b[2], north: c.b[3], areaM2: c.area, country: c.n, poly: c });
-    const f = new Float32Array(buf, 16 + c.i * 3 * M * 4, 3 * M);
-    f.set(r.modis, 0); f.set(r.viirs, M); f.set(r.harm, 2 * M);
+    const f = new Float32Array(buf, 16 + c.i * 4 * M * 4, 4 * M);
+    f.set(r.modis, 0); f.set(r.viirs, M); f.set(r.vEq, 2 * M); f.set(r.mEq, 3 * M);
   }
   const res = await fetch('data/countries.bin', { method: 'PUT', body: buf });
   precomputing = false;
