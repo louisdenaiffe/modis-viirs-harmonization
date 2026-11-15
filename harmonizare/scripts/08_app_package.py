@@ -41,8 +41,36 @@ def table(unit):
         mv = m & (d.source_viirs != 'viirs'); d.loc[mv, 'typ_err_pct_viirs'] = typical_err('viirs', dn, d.loc[mv, 'n_viirs'].values)
     d['confidence'] = np.select([d.n_modis >= 1000, d.n_modis >= 100, d.n_modis >= 10], ['high', 'medium', 'low'], 'none')
     return d.sort_values([unit, 'daynight', 'year', 'month']).round(3)
+from scipy.stats import kendalltau, theilslopes
+def extras(t, unit):
+    """challenge asks for: anomaly vs the historical median, which periods of the year burn most, which years burned most, trends"""
+    ref = t[t.year.between(2003, 2025)]; gk = [unit, 'daynight', 'month']
+    for sc in ('modis', 'viirs'):
+        st = ref.groupby(gk)[f'n_{sc}'].agg(median='median', mean='mean').rename(columns={'median': f'median_{sc}', 'mean': f'mean_{sc}'}).reset_index()
+        t = t.merge(st, on=gk, how='left')
+        t[f'anom_pct_{sc}'] = np.where(t[f'median_{sc}'] > 0, 100 * (t[f'n_{sc}'] / t[f'median_{sc}'].replace(0, np.nan) - 1), np.nan)
+    # seasonal profile: one row per unit x day/night x calendar month (2003-2025)
+    full = ref.pivot_table(index=[unit, 'daynight', 'year'], columns='month', values=['n_modis', 'n_viirs'], aggfunc='sum', fill_value=0).stack('month', future_stack=True).reset_index()
+    se = full.groupby(gk).agg(median_modis=('n_modis', 'median'), mean_modis=('n_modis', 'mean'), p10_modis=('n_modis', lambda x: x.quantile(.1)), p90_modis=('n_modis', lambda x: x.quantile(.9)),
+                              median_viirs=('n_viirs', 'median'), mean_viirs=('n_viirs', 'mean'), p10_viirs=('n_viirs', lambda x: x.quantile(.1)), p90_viirs=('n_viirs', lambda x: x.quantile(.9))).reset_index()
+    tot = se.groupby([unit, 'daynight']).mean_modis.transform('sum')
+    se['share_of_year_pct'] = np.where(tot > 0, 100 * se.mean_modis / tot.replace(0, np.nan), np.nan)
+    se['season_rank'] = se.groupby([unit, 'daynight']).mean_modis.rank(ascending=False, method='first')           # 1 = the month that normally burns most
+    # yearly totals, rank of each year, and trend 2003-2025 (Theil-Sen slope as % of the median year per year; Kendall p-value)
+    yr = full.groupby([unit, 'daynight', 'year'])[['n_modis', 'n_viirs']].sum().reset_index()
+    yr['rank_year_modis'] = yr.groupby([unit, 'daynight']).n_modis.rank(ascending=False, method='min')
+    yr['rank_year_viirs'] = yr.groupby([unit, 'daynight']).n_viirs.rank(ascending=False, method='min')
+    rows = []
+    for (u, dn), g in yr.groupby([unit, 'daynight']):
+        g = g.sort_values('year'); med = g.n_modis.median()
+        if len(g) < 15 or med < 50: continue
+        sl = theilslopes(g.n_modis.values, g.year.values)[0]; tau, pv = kendalltau(g.year.values, g.n_modis.values)
+        rows.append({unit: u, 'daynight': dn, 'median_year_modis': med, 'trend_pct_per_year': 100 * sl / med, 'kendall_tau': tau, 'p_value': pv, 'significant': bool(pv < 0.05)})
+    return t, se.round(3), yr.round(3), pd.DataFrame(rows).round(4)
 for unit in ('country', 'region'):
-    t = table(unit); t.to_csv(f'{A}/{unit}_month.csv', index=False); print(unit, len(t), t[unit].nunique())
+    t, se, yr, tr = extras(table(unit), unit)
+    t.round(3).to_csv(f'{A}/{unit}_month.csv', index=False); se.to_csv(f'{A}/{unit}_season.csv', index=False); yr.to_csv(f'{A}/{unit}_year.csv', index=False); tr.to_csv(f'{A}/{unit}_trend.csv', index=False)
+    print(unit, len(t), t[unit].nunique(), len(se), len(yr), len(tr))
 for src, dst in ((f'{R}/rezultate/calib_physics_ml/accuracy_modis_scale.csv', 'accuracy_modis_scale.csv'), (f'{R}/rezultate/calib_ratio/accuracy_viirs_scale.csv', 'accuracy_viirs_scale.csv'),
                  (f'{R}/rezultate/events_countries/cell_country.parquet', 'cell_country.parquet'), (f'{R}/rezultate/events_countries/famous_fires.csv', 'famous_fires.csv'),
                  (f'{F}/validation_by_country.csv', 'validation_by_country.csv'), (f'{F}/fig_harmonization_summary.png', 'fig_harmonization_summary.png'),

@@ -9,6 +9,9 @@ aplicația doar citește coloana scării alese și adună.
 | `cells_monthly/final_{an}.parquet` | datele pe celulă: pentru orice dreptunghi desenat pe hartă |
 | `country_month.csv` | gata agregat pe 230 de țări (cu rang, eroare tipică, încredere) |
 | `region_month.csv` | la fel, pe 14 regiuni mari + `GLOBAL` |
+| `country_season.csv`, `region_season.csv` | profilul sezonier: pentru fiecare lună calendaristică, mediana, media, p10, p90 (2003–2025), cât la sută din an arde în luna aceea și rangul lunii în sezon |
+| `country_year.csv`, `region_year.csv` | totaluri anuale și rangul fiecărui an („care ani au ars cel mai mult”) |
+| `country_trend.csv`, `region_trend.csv` | tendința 2003–2025: % pe an (Theil–Sen), cu test de semnificație |
 | `cell_country.parquet` | din ce țară face parte fiecare celulă (`ix, iy, country`) |
 | `accuracy_modis_scale.csv`, `accuracy_viirs_scale.csv` | tabelul de erori pe mărimea dreptunghiului și numărul de detecții |
 | `validation_by_country.csv` | eroarea conversiei pe fiecare țară (test 2018–2021) |
@@ -53,3 +56,13 @@ Valorile măsurate direct nu au eroare de conversie. În `country_month.csv` și
 - **MODIS:** „câte detecții ar fi raportat MODIS Aqua”. 2002–2021 sunt măsurători reale; restul sunt convertite.
 - **VIIRS:** „câte detecții ar fi raportat VIIRS”. 2012–2025 sunt măsurători reale; 2000–2011 sunt convertite din MODIS.
 Clasamentul lunilor iese aproape identic pe ambele scări. Scara VIIRS are numere de ~5–6 ori mai mari.
+
+## Coloane adăugate pentru cerințele din enunțul NASA
+În `country_month.csv` / `region_month.csv`:
+- `median_modis`, `mean_modis`, `median_viirs`, `mean_viirs` — valoarea normală a acelei luni calendaristice (2003–2025)
+- `anom_pct_modis`, `anom_pct_viirs` — abaterea lunii față de mediana istorică, în % (ex. +218 = de 3,2 ori peste normal)
+
+Enunțul cere explicit: „compare the burning activity of the current month against the historical median”,
+„which periods of the year see more fires” (→ `*_season.csv`), „which years had more burning activity” (→ `*_year.csv`),
+„trends” (→ `*_trend.csv`). Pentru un dreptunghi desenat, aplicația calculează aceleași lucruri din `cells_monthly`:
+mediana pe aceeași lună calendaristică din 2003–2025, apoi `100 * (valoare / mediană - 1)`.
