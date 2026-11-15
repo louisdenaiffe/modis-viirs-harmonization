@@ -150,6 +150,7 @@
   #scroll { overflow-y: auto; padding: 14px 16px 24px; flex: 1; }
   section { margin-bottom: 20px; }
   h2 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--text); text-wrap: balance; }
+  h2 select.h2pick { font-weight: 600; padding: 1px 4px; margin-left: 2px; }
   /* Sections are separated by hairlines rather than boxed. */
   #results section + section { border-top: 1px solid var(--border); padding-top: 18px; }
   .sub { color: var(--text-2); font-size: 13px; }
@@ -361,7 +362,7 @@
       </section>
 
       <section>
-        <h2>Fire season: typical year against <span id="seasonYear"></span></h2>
+        <h2>Fire season: typical year against <select id="seasonYear" class="h2pick" aria-label="Year compared with the typical year"></select></h2>
         <div class="card">
           <div class="legend" id="seasonLegend"></div>
           <svg id="seasonChart" viewBox="0 0 560 220" role="img" aria-label="Hotspots by month of the year"></svg>

@@ -1167,6 +1167,10 @@ window.addEventListener('aoi-selected', async e => {
   setStatus('Reading hotspots…');
   await ready;
   if (token !== state.token) return;
+  if (!state.rangeSet && !data.error) {               // dates not picked yet: end at the slider's month
+    const ix = data.index;
+    showRange(Math.floor(ix.firstMonth / 12) * 12, Math.max(ix.firstMonth, Math.min(ix.lastMonth, mapMonth())));
+  }
   if (data.error) { setStatus('The hotspot data could not be loaded (' + data.error.message + ').'); return; }
   try {
     const res = await query(sel, (d, n) => { if (token === state.token) setStatus(`Reading hotspots… ${d} of ${n} map squares`); });
@@ -1217,10 +1221,17 @@ for (const g of document.querySelectorAll('.unitSeg')) g.addEventListener('click
   if (b) setUnit(b.dataset.v);
 });
 // Date range: a start month + year and an end month + year.
-function setRange(m0, m1) {
+// Until the visitor picks dates (From / To, Last 12 months, All), the range runs from January 2000
+// to the month on the fire-map slider at the moment an area is selected; once they pick, their
+// range stays for every later selection.
+function showRange(m0, m1) {
   if (m0 > m1) [m0, m1] = [m1, m0];
   Object.assign(state, { m0, m1, y0: 2000 + Math.floor(m0 / 12), y1: 2000 + Math.floor(m1 / 12) });
   $('mo0').value = m0 % 12; $('y0').value = state.y0; $('mo1').value = m1 % 12; $('y1').value = state.y1;
+}
+function setRange(m0, m1) {
+  state.rangeSet = true;
+  showRange(m0, m1);
   render();
 }
 for (const id of ['mo0', 'y0', 'mo1', 'y1']) $(id).onchange = () =>
@@ -1234,8 +1245,7 @@ ready.then(() => {
   $('rangeAll').onclick = all;
   // Last 12 complete months.
   $('rangeLast12').onclick = () => { const end = ix.partialMonth === ix.lastMonth ? ix.lastMonth - 1 : ix.lastMonth; setRange(end - 11, end); };
-  Object.assign(state, { m0: (fy - 2000) * 12, m1: (ly - 2000) * 12 + 11, y0: fy, y1: ly });
-  $('mo0').value = 0; $('y0').value = fy; $('mo1').value = 11; $('y1').value = ly;
+  showRange((fy - 2000) * 12, ix.lastMonth);         // January 2000 to the latest month (see showRange)
 });
 
 // Everything shown in the panel is derived here from the monthly series.
@@ -1425,8 +1435,15 @@ function criticalPeriod(med) {
 
 function drawSeason(md, unit) {
   const svg = $('seasonChart'), W = 560, H = 220, pad = { l: 44, r: 46, t: 30, b: 26 };
-  // Compare the typical year with the newest year in the range that has any data.
-  const row = [...md.rows].reverse().find(r => r.cells.some(c => c.exists)) || md.rows[0];
+  // Compare the typical year with the year picked in the title (default: the newest year in the
+  // range that has any data).
+  const years = md.rows.filter(r => r.cells.some(c => c.exists)).reverse();
+  const row = years.find(r => r.y === state.seasonYear) || years[0] || md.rows[0];
+  const pick = $('seasonYear');
+  pick.textContent = '';
+  for (const r of years.length ? years : [row]) pick.add(new Option(r.y, r.y));
+  pick.value = row.y;
+  pick.onchange = () => { state.seasonYear = +pick.value; drawSeason(md, unit); };
   const yr = row.cells.map(c => (c.exists && !c.partial ? c.v : null));
   const top = niceMax(Math.max(...md.p75, ...yr.map(v => v || 0), 1));
   const y = axes(svg, W, H, pad, top);
@@ -1449,7 +1466,6 @@ function drawSeason(md, unit) {
   } else {
     $('seasonNote').textContent = 'No clear fire season: hotspots are spread over most of the year.';
   }
-  $('seasonYear').textContent = row.y;
   const lg = $('seasonLegend'); lg.textContent = '';
   for (const [cls, c, label] of [['', C_MED, 'Typical year (median)'], ['band', C_BAND, 'Usual range (middle half of years)'], ['', C_NOW, String(row.y)]]) {
     const sp = el('span', { className: cls, textContent: label }); sp.style.setProperty('--c', c); lg.append(sp);
@@ -1786,7 +1802,7 @@ $('dlPng').onclick = () => runDownload($('dlPng'), fileStem() + (state.view === 
     img.onerror = rej;
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(s));
   });
-  text('Fire season: typical year (orange), usual range (grey), ' + $('seasonYear').textContent + ' (yellow)', 24, y + 14, '#c3c2b7', 13);
+  text('Fire season: typical year (orange), usual range (grey), ' + $('seasonYear').value + ' (yellow)', 24, y + 14, '#c3c2b7', 13);
   text('Unusual years: difference from the average', 616, y + 14, '#c3c2b7', 13);
   await drawSvg('seasonChart', 24, y + 26, 560, 220);
   await drawSvg('anomChart', 616, y + 26, 560, 220);

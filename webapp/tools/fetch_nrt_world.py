@@ -33,8 +33,14 @@ BASE = "https://firms.modaps.eosdis.nasa.gov"
 HERE = os.path.dirname(os.path.abspath(__file__))
 COST, BUDGET = 36, 4800                  # credits per world request; stay under the 5,000 limit
 SENSORS = {"modis": "MODIS", "viirs-snpp": "VIIRS_SNPP"}
-FIELDS = ["latitude", "longitude", "acq_date", "acq_time", "satellite", "instrument",
-          "confidence", "frp", "daynight", "type"]
+# Every column of NASA's yearly archive files, so the team's models (which use scan, track and
+# brightness) can run on the current year too. The app's own build only reads what it needs.
+FIELDS = {"modis": ["latitude", "longitude", "brightness", "scan", "track", "acq_date", "acq_time",
+                    "satellite", "instrument", "confidence", "version", "bright_t31", "frp",
+                    "daynight", "type"],
+          "viirs-snpp": ["latitude", "longitude", "bright_ti4", "scan", "track", "acq_date", "acq_time",
+                         "satellite", "instrument", "confidence", "version", "bright_ti5", "frp",
+                         "daynight", "type"]}
 
 
 def read_key():
@@ -138,7 +144,7 @@ def main():
             if "type" not in df:
                 df = df.assign(type="0")
             path = os.path.join(out_dir, f"nrt_{name}_{year}_world.csv")
-            df.reindex(columns=FIELDS).to_csv(path, mode="a", header=not os.path.exists(path), index=False)
+            df.reindex(columns=FIELDS[name]).to_csv(path, mode="a", header=not os.path.exists(path), index=False)
             kept = len(df)
         with open(done_path, "a") as fh:
             fh.write(f"{name}:{day}\n")
