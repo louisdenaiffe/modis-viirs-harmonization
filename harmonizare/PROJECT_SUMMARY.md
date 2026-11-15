@@ -209,7 +209,30 @@ The app does no modelling at run time: it reads the column for the chosen scale 
 
 ---
 
-## 9. Suggested pitch (five slides)
+## 9. How this maps onto NASA's own harmonization practice
+
+NASA already harmonizes other sensor pairs. Two reference cases: **HLS** (Harmonized Landsat and Sentinel-2) and the **MODIS–VIIRS continuity products** for clouds and aerosols. Our pipeline follows the same logic, applied to fire detections.
+
+| NASA practice | What it does there | Our equivalent |
+|---|---|---|
+| Remove effects that are not the signal (HLS: atmospheric correction) | both sensors measure the surface, not the air | keep vegetation fires only: FIRMS type flag, confidence filter, our static-source mask |
+| Common grid (HLS: one 30 m tiling) | pixels from both sensors line up | one 0.25° global grid, monthly |
+| Bring the finer sensor to the coarser one (HLS: Sentinel-2 10–20 m resampled to 30 m) | compare like with like | VIIRS 375 m converted to the MODIS scale as the reference record |
+| Adjust one sensor to a reference sensor (HLS: Sentinel-2 bands adjusted to Landsat's response) | removes differences caused only by the instrument | VIIRS adjusted to Aqua with factors learned on the overlap years |
+| View-geometry normalization (HLS: BRDF correction) | a change of viewing angle is not mistaken for a change on the ground | handled by monthly aggregation (all view angles are sampled) and, at high latitudes, by using the strongest overpass per day; measured but not corrected per detection |
+| Pair sensors with the same overpass time (continuity products: Aqua MODIS + Suomi NPP VIIRS) | no time-of-day difference | Aqua paired with Suomi NPP; Terra used only before Aqua existed |
+| Keep sensor identity and quality information with every value (HLS: separate L30 / S30 products, QA layer) | users know what they are looking at | `source`, `flag`, interval and confidence on every value |
+
+Where NASA's approach differs from ours, and what it suggests:
+- **Same algorithm on both sensors.** The continuity products run one shared algorithm on MODIS and VIIRS, so the retrieval method drops out of the comparison. For fire, the equivalent is NASA's VIIRS 750 m active-fire product, which uses the MODIS-heritage algorithm. We instead calibrate the outputs of two different algorithms. Comparing our converted values with the 750 m product would be a strong independent check (not done).
+- **Per-observation view-angle correction.** HLS normalizes each observation to a standard geometry. We measured the effect (MODIS detects from ~10 MW at nadir but ~32 MW at the swath edge) and let monthly aggregation average it out. A per-detection correction is the natural next refinement, and what a daily product would need.
+- **Morning orbit.** NASA states there is no VIIRS replacement for Terra's morning overpass. Our record is anchored on the afternoon orbit for exactly this reason.
+
+Sources: https://www.earthdata.nasa.gov/data/projects/hls · https://hls.gsfc.nasa.gov · https://atmosphere-imager.gsfc.nasa.gov/continuity/products · https://atmosphere-imager.gsfc.nasa.gov · https://www.earthdata.nasa.gov/news/blog/from-modis-viirs-continuing-legacy · https://www.earthdata.nasa.gov/data/alerts-outages/modis-viirs-transition
+
+---
+
+## 10. Suggested pitch (five slides)
 
 1. **The problem:** the naive record jumps ×5 in 2012; MODIS is ending; Terra has already lost 42% of its detections to orbit drift.
 2. **The idea:** learn the conversion from six years when both sensors watched the same fires; verify on years the model never saw.
@@ -217,7 +240,7 @@ The app does no modelling at run time: it reads the column for the chosen scale 
 4. **Reality check:** 21 of 30 famous fires are the record month for their area, in both sensor eras; no false alarm on quiet periods.
 5. **Honesty and product:** every value carries its source and a confidence level; the app shows both scales and warns when an area has too few fires for a reliable number.
 
-## 10. Questions the committee may ask
+## 11. Questions the committee may ask
 
 - *Why not machine learning?* We tried it; it failed on a region it had not seen (23–30% error). Calibrated factors are explainable and generalise.
 - *Why the MODIS scale and not VIIRS?* We provide both. On the MODIS scale most of the 26 years are real measurements; the VIIRS scale matches today's data. Month rankings are nearly identical.
