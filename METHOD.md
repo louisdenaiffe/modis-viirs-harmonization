@@ -14,6 +14,10 @@ and `harmonize/crosstest.py`, which are independent of the fitting code. The ear
   rule picked it, and it wins under every size filter except the 12 baseline countries alone.
   FRP sum with `glm_regional` is a statistical tie on unseen countries (p90 24.0 % vs 23.1 %)
   and loses on unseen years (17.5 % vs 14.4 %). The earlier recommendation was frp_sum.
+- **For hotspot counts and FRP, use `glm_cell`** (added after the full recalibration, §6.10):
+  `glm_regional` plus a shrunk per-cell factor. On unseen years it brings hotspots from
+  20.6 % to 15.2 % and FRP from 17.5 % to 14.2 % (p90, ≥ 10 k). It is not used for the overall
+  recommendation: on cell-days it does not beat `glm_regional` in the long-gap back-cast test.
 - **Unseen countries** (10-fold grouped K-fold over countries; country-years with ≥ 10 000
   VIIRS detections, n = 963): median |annual bias| 7.5 %, **p90 23.1 %**, pooled bias +0.6 %.
 - **Unseen years in seen countries** (leave-one-year-out, the real back-cast situation, same
@@ -516,6 +520,60 @@ Terra-only factor fitted on 2020-2024 alone would be biased. It is diluted in a 
 4. **Report regional sums, not small countries.** Below ~1 000 detections a year, single
    fires dominate the annual total and the bias distribution.
 
+### 6.10 `glm_cell`: a per-cell factor for hotspots and FRP
+
+Added after the results above; §6.1-6.9 are unchanged and describe the other models. The
+model is in §4, the experiments that led to it in `IMPROVE.md`. It was chosen on half A,
+confirmed on half B, then run through the same hold-outs (`scripts/add_glm_cell.py`).
+
+p90 |annual bias| %, ≥ 10 k country-years, Terra + Aqua, `glm_regional` → `glm_cell`:
+
+| | hotspots | FRP | cell-days |
+|---|---|---|---|
+| unseen years, day + night | 20.6 → **15.2** | 17.5 → **14.2** | 14.4 → **11.5** |
+| unseen years, day | 16.1 → **13.6** | 15.7 → **11.9** | 13.4 → **11.7** |
+| unseen years, night | 27.0 → **22.1** | 26.9 → **24.4** | 27.7 → **22.2** |
+| unseen countries (K-fold), day + night | 29.3 → **27.8** | 24.0 → **21.6** | 23.1 → **21.5** |
+| unseen countries, day | 28.5 → **24.6** | 22.9 → **20.5** | 22.9 → **21.7** |
+| unseen countries, night | **37.0** → 38.0 | **34.1** → 37.0 | **38.8** → 41.9 |
+| cross-test A↔B pooled, day + night | 30.9 → 31.2 | 23.7 → **20.7** | 24.4 → 24.9 |
+| spatial blocks | identical | identical | identical |
+
+- Aqua only and Terra only improve as well on unseen years (hotspots 22.6 → 17.5 and
+  35.8 → 21.7; FRP 18.3 → 15.1 and 55.2 → 28.4).
+- On the 12 baseline countries × 2019/2023 it is mixed: unseen-year hotspots 10.1 → 9.6 and
+  cell-days 8.5 → 7.8, but FRP 5.7 → 7.7 (24 country-years).
+- At night on unseen countries it is 1 to 3 points worse.
+- A held-out 10° block contains no seen cell and no seen 5° tile, so the model equals
+  `glm_regional` there.
+
+**Long-gap test** (fit on one block of years, score a separate block; ≥ 10 k;
+`scripts/experiments/long_gap.py`). Leave-year-out has training years on both sides of the
+test year; the back-cast has none before.
+
+| fit → test | hotspots | FRP | cell-days |
+|---|---|---|---|
+| 2016-24 → 2012-15 | 22.4 → 16.4 | 18.1 → 13.1 | 11.4 → 11.1 |
+| 2019-24 → 2012-15 | 20.1 → 17.8 | 18.7 → 14.6 | 11.9 → 13.1 |
+| 2019-24 → 2012-13 | 21.5 → 19.5 | 17.1 → 13.6 | 10.7 → 15.1 |
+| 2015-21 → 2012-13 | 21.1 → 16.6 | 17.0 → 12.0 | 11.3 → 12.7 |
+| 2012-20 → 2021-24 | 22.0 → 18.0 | 19.8 → 20.0 | 17.8 → 15.1 |
+| 2012-17 → 2021-24 | 23.3 → 17.4 | 20.3 → 20.2 | 18.4 → 15.7 |
+| 2012-17 → 2023-24 | 21.0 → 16.7 | 20.2 → 20.0 | 19.0 → 19.0 |
+
+Hotspots improve in all seven splits and FRP in the four backward ones. Cell-days do not
+improve going backwards (worse in three of four), and uncorrected cell-days remain the best
+single number in that direction. Hence:
+
+- `recommended` (overall) excludes `glm_cell` (`calibrate.OVERALL_PICK_EXCLUDED`) and stays
+  **fire_cell_days / glm_regional**. The harmonized tables and the back-cast (§6.8) are
+  unchanged.
+- `recommended.by_metric` gives the model to use for each metric, ranked on ≥ 10 k
+  country-years: `glm_cell` for `n_hotspots` and `frp_sum`, `glm_regional` for
+  `fire_cell_days`. Apply it with `apply_coefficients(coef, metric, rows, model="glm_cell")`.
+
+Not redone with `glm_cell`: the drift tables (§6.7), the figures, and the 2011/2012 step.
+
 ## 7. Caveats on these numbers
 
 - **The model choice is made on the same scores it is reported with.** With 15 candidate
@@ -613,6 +671,9 @@ python scripts/backcast_check.py $C data_backcast runs/backcast runs/harmonized/
 python scripts/plot_full.py outputs_full
 python -m pytest -q
 ```
+
+`glm_cell` was added to the committed tables with `scripts/add_glm_cell.py` (validate,
+crosstest, coef, merge), which runs that model alone; the full commands above now include it.
 
 Set `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1` when using `--jobs`, so the worker processes
 do not oversubscribe the cores.

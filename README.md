@@ -11,6 +11,11 @@ is fire cell-days with `glm_regional`. For country-years with ≥ 10 000 VIIRS d
 p90 of the annual-total error is 23 % in countries the model never saw and 14 % in held-out
 years of seen countries, which is the 2000-2011 back-cast case. See `METHOD.md` §6.
 
+For hotspot counts or FRP, use the `glm_cell` model (`recommended.by_metric` in the
+coefficients): it adds a shrunk per-cell factor and brings the held-out-year error to 15 %
+(hotspots) and 14 % (FRP). See `METHOD.md` §6.10, `IMPROVE.md` (how it was found) and
+`BENCHMARK_IANIS.md` (comparison with a second model on its own benchmark).
+
 ## Run
 
 ```bash
