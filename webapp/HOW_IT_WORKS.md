@@ -202,6 +202,7 @@ outlined in the table, left out of the medians, and left out of the harmonizatio
 - **Play** animates the whole world from November 2000 to the latest month (2x speed) with a
   fixed colour scale, so months can be compared. Pause, or touch the slider, to stop.
 - The calendar table uses the same fire colours: darker = fewer hotspots, lighter = more.
+- **Starting month:** the map opens on January 2025.
 
 ### 10. The whole world (`tools/build_world.py`, `tools/fetch_nrt_world.py`)
 - Source: NASA FIRMS country archives for every country, MODIS 2000-2025 and VIIRS
