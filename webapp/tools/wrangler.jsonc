@@ -1,0 +1,16 @@
+// Cloudflare settings for the public website. Only the staged folder ../../fire-globe-site
+// (built by tools/deploy.sh) is published: never this project folder, which holds the
+// raw data, the git history and the NASA key. worker.js answers partial-file requests
+// for the data files; everything else is served directly.
+{
+  "name": "fire-globe",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "../../fire-globe-site",
+    "binding": "ASSETS",
+    "run_worker_first": ["/data/*"]
+  }
+}

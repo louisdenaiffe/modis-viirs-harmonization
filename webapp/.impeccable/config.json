@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "pulsing-dot",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-11-14T21:04:52.648Z",
+        "reason": "Claude checked: index.html and app.js contain no pulse/keyframes animation; the only 'dots' are static draggable selection-corner handles"
+      }
+    ]
+  }
+}

@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fire Globe</title>
+<meta name="description" content="25 years of NASA FIRMS fire hotspots (MODIS 2000 to today, VIIRS since 2012) on one comparable scale. Spin the globe, pick a country, see its month-by-month fire record. NASA Space Apps Challenge 2026.">
+<meta property="og:title" content="Fire Globe">
+<meta property="og:description" content="MODIS and VIIRS fire hotspots harmonized into one record, 2000 to today. NASA Space Apps Challenge 2026.">
+<meta name="theme-color" content="#020308">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<link rel="stylesheet" href="vendor/fonts.css">
+<style>
+  :root {
+    --panel: rgba(14, 17, 24, 0.94);
+    --surface: #1a1a19;
+    --border: rgba(255, 255, 255, 0.10);
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --text: #f0efec;
+    --text-2: #c3c2b7;
+    --muted: #898781;
+    --accent: #ffb020;
+    --blue: #3987e5;
+    --orange: #d95926;
+    --panel-w: min(640px, max(520px, 40vw));
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #02030a; color: var(--text);
+    font: 14px/1.45 "IBM Plex Sans", system-ui, sans-serif; caret-color: var(--accent); }
+  ::selection { background: rgba(243, 122, 34, 0.45); color: #fff; }
+  * { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.22) transparent; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); border-radius: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  #readout { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+  /* Space: plain black sky with the star canvas, behind the transparent map canvas */
+  #space { position: fixed; inset: 0; background: #020308; }
+  #stars { position: fixed; inset: 0; width: 100%; height: 100%; }
+  #map { position: fixed; inset: 0; background: transparent; }
+  /* Two decorative satellites circling the globe: drawn on top, never catch a click. */
+  #sats { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+  #map.selecting .maplibregl-canvas { cursor: crosshair !important; }
+
+  .handle { width: 14px; height: 14px; border-radius: 50%; background: var(--accent);
+    border: 2px solid #1a1200; box-shadow: 0 0 0 2px rgba(255, 176, 32, 0.35); cursor: grab; }
+
+  /* The floating boxes share the results panel's frosted glass, so the page reads as one set. */
+  #tools, #timebar, #readout {
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.02) 45%), rgba(14, 18, 27, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 16px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 14px 40px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(22px) saturate(160%); -webkit-backdrop-filter: blur(22px) saturate(160%); }
+  #tools { position: fixed; z-index: 5; top: 16px; left: 16px; padding: 10px; display: flex; flex-direction: column;
+    gap: 8px; width: min(400px, calc(100vw - 32px)); }
+  #tools .hint { margin: 0; padding: 6px 4px 0; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  #tools .hint.desk { display: none; border-top: 0; padding-top: 3px; }
+  #tools .hint kbd { font: inherit; font-size: 11px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--text, #fff); background: rgba(255,255,255,.08); }
+  @media (min-width: 761px) and (hover: hover) and (pointer: fine) { #tools .hint.desk { display: block; } }
+  #tools .row { display: flex; gap: 8px; align-items: center; }
+  .brand { display: flex; align-items: baseline; gap: 10px; padding: 2px 4px 4px; border-bottom: 1px solid var(--border); margin-bottom: 2px; }
+  .brand strong { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .brand span { font-size: 12px; color: var(--muted); }
+  #search { flex: 1; min-width: 0; padding: 7px 10px; }
+  #searchResults { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; }
+  #searchResults:empty { display: none; }
+  #searchResults li { padding: 6px 8px; border-radius: 6px; cursor: pointer; color: var(--text-2); font-size: 13px; }
+  #searchResults li:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+  label.toggle { display: flex; gap: 6px; align-items: center; color: var(--text-2); font-size: 13px;
+    padding: 0 4px; cursor: pointer; user-select: none; }
+  label.toggle input { accent-color: var(--accent); }
+  #timebar { position: fixed; z-index: 5; left: 16px; bottom: 28px; width: min(460px, calc(100vw - 32px));
+    padding: 12px 14px 8px; }
+  #timebar .row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  #timebar .row.units { justify-content: space-between; padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
+  #timebar .row label { color: var(--text-2); font-size: 13px; }
+  #timebar .when { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+  #heatWhen { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  #heatArea { font-size: 11px; color: var(--muted); }
+  #heatArea[hidden] { display: none; }
+  #heatCaption { font-size: 12px; color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* What the fire map's colours mean, same red-to-yellow as the map and the table. */
+  .heatKey { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .heatKey i { width: 64px; height: 6px; border-radius: 3px;
+    background: linear-gradient(90deg, #8a1609, #c4240d, #e8471a, #f37a22, #f9a72f, #fdd23f, #fff07a); }
+  /* Units switch: the sensor name, then its pixel size in a quieter tone. */
+  .unitSeg button small { font-size: 11px; font-weight: 400; color: var(--muted); margin-left: 3px; }
+  .unitSeg button.on small { color: var(--text-2); }
+  /* Play: a round triangle button; pointing at it (or focusing it) swaps the triangle for the word. */
+  #playBtn { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; height: 36px; min-width: 36px;
+    padding: 0 10px; border-radius: 18px; background: #f37a22; border-color: #f37a22; color: #1a1200;
+    font-weight: 600; white-space: nowrap; transition: background 0.15s; }
+  #playBtn .lbl, #playBtn .ico { display: inline-flex; overflow: hidden;
+    transition: max-width 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s; }
+  #playBtn .ico { max-width: 16px; opacity: 1; }
+  #playBtn .lbl { max-width: 0; opacity: 0; }
+  #playBtn:hover .ico, #playBtn:focus-visible .ico { max-width: 0; opacity: 0; }
+  #playBtn:hover .lbl, #playBtn:focus-visible .lbl { max-width: 72px; opacity: 1; }
+  #playBtn:hover { background: #f9a72f; }
+  #heatYear { width: 78px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  #heatMonth { width: 100%; margin: 0; padding: 0; border: 0; background: transparent; accent-color: #f37a22;
+    cursor: ew-resize; }
+  #monthTicks { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);
+    margin: 2px -4px 0; user-select: none; }
+  #monthTicks span { width: 26px; text-align: center; cursor: pointer; }
+  #monthTicks span.on { color: var(--text); font-weight: 600; }
+  #readout { position: fixed; z-index: 5; left: 16px; bottom: 188px; padding: 10px 12px; min-width: 250px;
+    font-variant-numeric: tabular-nums; font-size: 13px; }
+  #readout b { display: block; font-size: 17px; color: var(--accent); margin-bottom: 4px; }
+  #readout span { color: var(--muted); display: inline-block; width: 52px; }
+  button, select, input { font: inherit; color: var(--text); background: rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--border); border-radius: 8px; }
+  button { padding: 7px 14px; cursor: pointer; }
+  button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #selectBtn.active { background: var(--accent); border-color: var(--accent); color: #1a1200; font-weight: 600; }
+  select, input { padding: 5px 8px; }
+  select option { background: #1a1a19; }
+
+  /* ---------- Results panel ---------- */
+  #panel { position: fixed; z-index: 6; top: 12px; right: 12px; bottom: 12px; width: var(--panel-w); border-radius: 18px; overflow: hidden;
+    /* Frosted glass: see-through tint, strong blur of the globe behind, a light rim. */
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.02) 40%), rgba(16, 20, 30, 0.42);
+    border: 1px solid rgba(255, 255, 255, 0.18); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 18px 50px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(26px) saturate(170%); -webkit-backdrop-filter: blur(26px) saturate(170%); transform: translateX(calc(100% + 24px)); transition: transform 0.25s ease;
+    display: flex; flex-direction: column; }
+  #panel.open { transform: none; }
+  #panelTab { position: fixed; z-index: 6; top: 16px; right: 16px; display: none; }
+  #panelTab.show { display: block; }
+  #panel header { display: flex; align-items: flex-start; gap: 12px; padding: 16px 16px 14px;
+    border-bottom: 1px solid var(--border); }
+  #panel header .place { flex: 1; min-width: 0; }
+  #panel header h1 { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.2; letter-spacing: -0.015em; text-wrap: balance; }
+  #panel header .sub { display: block; margin-top: 3px; color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+  /* Coordinates are tucked away: most people select by dragging or by country. */
+  .coords { margin-bottom: 18px; }
+  .coords summary { cursor: pointer; color: var(--text-2); font-size: 13px; width: max-content; list-style: none; }
+  .coords summary::-webkit-details-marker { display: none; }
+  .coords summary::before { content: ""; display: inline-block; width: 0; height: 0; margin: 0 7px 1px 1px;
+    border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent; transition: transform 0.2s; }
+  .coords[open] summary::before { transform: rotate(90deg); }
+  .coords summary:hover { color: var(--text); }
+  .coords[open] summary { margin-bottom: 10px; }
+  #panel header button { padding: 3px 10px; }
+  #sheetHandle { display: none; }
+  #scroll { overflow-y: auto; padding: 14px 16px 24px; flex: 1; }
+  section { margin-bottom: 20px; }
+  h2 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--text); text-wrap: balance; }
+  /* Sections are separated by hairlines rather than boxed. */
+  #results section + section { border-top: 1px solid var(--border); padding-top: 18px; }
+  .sub { color: var(--text-2); font-size: 13px; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  .bounds { display: grid; grid-template-columns: repeat(4, 1fr) auto; gap: 6px; align-items: end; }
+  .bounds label { font-size: 11px; color: var(--muted); display: block; }
+  .bounds input { width: 100%; font-variant-numeric: tabular-nums; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; background: transparent; padding: 5px 11px; color: var(--text-2); }
+  .seg button.on { background: rgba(255, 255, 255, 0.16); color: var(--text); font-weight: 600; }
+  .filters label { color: var(--muted); font-size: 12px; }
+
+  /* Summary figures: one ruled strip, read left to right. */
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .kpi { padding: 2px 12px; border-left: 1px solid var(--border); }
+  .kpi:first-child { padding-left: 0; border-left: 0; }
+  .kpi .k { font-size: 12px; color: var(--muted); }
+  .kpi .v { font-size: 20px; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .kpi .d { font-size: 12px; color: var(--text-2); }
+
+  .card { padding: 0; }
+  table.cal { width: 100%; border-collapse: separate; border-spacing: 2px; font-size: 11px;
+    font-variant-numeric: tabular-nums; table-layout: fixed; }
+  table.cal th { font-weight: 500; color: var(--muted); padding: 2px 0; text-align: center; }
+  table.cal th.y, table.cal td.y { width: 38px; text-align: left; color: var(--text-2); }
+  table.cal td { text-align: center; padding: 4px 0; border-radius: 3px; white-space: nowrap; overflow: hidden; }
+  table.cal td.c { cursor: pointer; }
+  table.cal td.c:hover { outline: 2px solid var(--text); outline-offset: -1px; }
+  /* The month shown on the fire map. */
+  table.cal td.c.now { outline: 2px solid var(--text); outline-offset: -2px; box-shadow: 0 0 0 2px #02030a; position: relative; z-index: 1; }
+  svg .hit { cursor: pointer; }
+  table.cal td.na { color: var(--axis); }
+  table.cal td.partial { box-shadow: inset 0 0 0 1px var(--muted); }
+  table.cal td.tot, table.cal th.tot { width: 50px; text-align: right; color: var(--text); font-weight: 600; padding-right: 2px; }
+  table.cal tr.med td { color: var(--text-2); border-top: 1px solid var(--axis); }
+  .ramp { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .ramp i { flex: 1; height: 8px; border-radius: 4px; max-width: 220px; }
+
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-2); margin-bottom: 4px; flex-wrap: wrap; }
+  .legend span::before { content: ""; display: inline-block; width: 18px; height: 3px; border-radius: 2px;
+    background: var(--c); vertical-align: middle; margin-right: 6px; }
+  .legend span.band::before { height: 10px; }
+  svg { display: block; width: 100%; height: auto; }
+  svg .hit:hover .cross { opacity: 1; }
+  svg .bar:hover { filter: brightness(1.25); }
+
+  .downloads { display: flex; flex-wrap: wrap; gap: 8px; }
+  a.savelink { display: inline-block; margin-top: 4px; padding: 6px 12px; border-radius: 8px; background: #f37a22;
+    color: #1a1200; font-weight: 600; text-decoration: none; }
+  a.savelink:hover { background: #f9a72f; }
+  #status { padding: 30px 8px; text-align: center; color: var(--text-2); }
+  #tip { position: fixed; z-index: 20; pointer-events: none; background: #0b0b0b; color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; font-size: 12px;
+    white-space: pre-line; max-width: 260px; display: none; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5); }
+
+  @media (max-width: 760px) {
+    :root { --panel-w: 100vw; }
+    #timebar { bottom: 64px; }
+    /* The month caption gets its own line instead of being cut to a letter. */
+    #timebar .row { flex-wrap: wrap; row-gap: 4px; }
+    #heatCaption { white-space: normal; }
+    /* "Show results" sits in the free strip under the fire-map bar, not over the search box. */
+    #panelTab { top: auto; bottom: 14px; left: 16px; right: 56px; }
+    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 12px; }
+    .kpi:nth-child(3) { padding-left: 0; border-left: 0; }
+    .brand span { display: none; }
+    .bounds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .bounds button { grid-column: 1 / -1; }
+    #readout { bottom: 236px; }
+    /* A bottom sheet: half height so the globe stays in view, full height once you read on. */
+    #panel { top: 42%; left: 0; right: 0; bottom: 0; width: auto; border-radius: 20px 20px 0 0; border: 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.18); transform: translateY(100%);
+      /* Denser glass than on a desk screen: the fire map right behind would otherwise blur into the text. */
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 120px), rgba(14, 17, 25, 0.86);
+      box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.45);
+      transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), top 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
+    #panel.full { top: 8px; }
+    #sheetHandle { display: block; position: absolute; top: 0; left: 50%; transform: translateX(-50%); z-index: 2;
+      width: 72px; height: 22px; padding: 0; border: 0; background: transparent; touch-action: none; }
+    #sheetHandle i { display: block; width: 38px; height: 5px; margin: 7px auto 0; border-radius: 3px; background: rgba(255, 255, 255, 0.32); }
+    #sheetHandle:hover i, #sheetHandle:focus-visible i { background: rgba(255, 255, 255, 0.55); }
+    #sheetHandle:focus-visible { outline-offset: -2px; border-radius: 8px; }
+    #panel header { padding: 22px 16px 12px; touch-action: none; }
+    #panel header h1 { font-size: 21px; }
+    #scroll { padding: 14px 16px calc(28px + env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+    .filters { gap: 10px; }
+    /* Charts are drawn 560 units wide and shrink to the screen: larger chart text keeps the
+       axis labels readable (about 10 px) once scaled down. */
+    #results svg { overflow: visible; }       /* edge labels (Median, -51%) may run into the margin */
+    #results svg text { font-size: 15px; }
+    /* The calendar keeps readable cells and scrolls sideways instead of squeezing the numbers. */
+    .calwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table.cal { min-width: 600px; }
+    table.cal th.y, table.cal td.y { position: sticky; left: 0; background: rgba(22, 26, 36, 0.95); z-index: 1; }
+  }
+</style>
+</head>
+<body>
+<div id="space"></div>
+<canvas id="stars"></canvas>
+<div id="map"></div>
+<canvas id="sats" aria-hidden="true"></canvas>
+
+<div id="tools">
+  <div class="brand"><strong>Fire Globe</strong><span>NASA fire hotspots on one scale, 2000 to today</span></div>
+  <div class="row">
+    <input id="search" type="search" placeholder="Search a country" autocomplete="off" aria-label="Search a country, a place or coordinates">
+    <button id="selectBtn" title="Draw a selection rectangle (or hold Shift and drag). Shift + click, or Select then a tap, selects a whole country.">Select</button>
+    <button id="clearBtn" title="Remove the selection">Clear</button>
+  </div>
+  <ul id="searchResults"></ul>
+  <div class="row">
+    <label class="toggle"><input id="labelsChk" type="checkbox" checked> Labels and borders</label>
+    <label class="toggle"><input id="rotateChk" type="checkbox" checked> Auto-rotate</label>
+  </div>
+  <p class="hint">Search a country, or press Select and tap one, to see its fire record.</p>
+  <p class="hint desk">Hold <kbd>Shift</kbd> and drag to select an area, or <kbd>Shift</kbd> + click a country.</p>
+</div>
+<div id="readout" hidden></div>
+
+<div id="timebar">
+  <div class="row units">
+    <span class="seg unitSeg" role="group" aria-label="Count hotspots as">
+      <button data-v="vEq" class="on" aria-pressed="true" title="Every month counted as VIIRS (375 m pixels) would see it">VIIRS <small>375 m</small></button><button data-v="mEq" aria-pressed="false" title="Every month counted as MODIS (1 km pixels) would see it">MODIS <small>1 km</small></button>
+    </span>
+    <span class="heatKey" aria-hidden="true">fewer <i></i> more hotspots</span>
+  </div>
+  <div class="row">
+    <button id="playBtn" aria-pressed="false" aria-label="Play" title="Show the world's fire map month by month, from November 2000 to the latest month"><span class="ico"><svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true"><path d="M4 1.8v11.4c0 .6.6.9 1.1.6l8.6-5.7c.4-.3.4-.9 0-1.2L5.1 1.2C4.6.9 4 1.2 4 1.8z" fill="currentColor"/></svg></span><span class="lbl">Play</span></button>
+    <div class="when"><strong id="heatWhen"></strong><span id="heatCaption"></span><span id="heatArea" hidden></span></div>
+    <label class="toggle" title="Show or hide the fire map"><input id="heatChk" type="checkbox" checked> Map</label>
+    <input id="heatYear" type="number" inputmode="numeric" step="1" aria-label="Year">
+  </div>
+  <input id="heatMonth" type="range" min="0" max="11" step="1" aria-label="Month">
+  <div id="monthTicks"></div>
+</div>
+<button id="panelTab">Show results</button>
+
+<aside id="panel" aria-label="Fire activity for the selected area">
+  <button id="sheetHandle" aria-label="Show more of the results" aria-expanded="false"><i></i></button>
+  <header>
+    <div class="place">
+      <h1 id="placeName">Selected area</h1>
+      <span class="sub" id="areaText"></span>
+    </div>
+    <button id="panelClose" title="Hide this panel">Hide</button>
+  </header>
+  <div id="scroll">
+    <details class="coords" id="coordBox">
+      <summary>Edit coordinates</summary>
+      <div class="bounds">
+        <div><label for="bN">North</label><input id="bN" type="number" step="0.0001" min="-90" max="90"></div>
+        <div><label for="bS">South</label><input id="bS" type="number" step="0.0001" min="-90" max="90"></div>
+        <div><label for="bW">West</label><input id="bW" type="number" step="0.0001" min="-180" max="180"></div>
+        <div><label for="bE">East</label><input id="bE" type="number" step="0.0001" min="-180" max="180"></div>
+        <button id="bApply">Apply</button>
+      </div>
+      <div class="note" id="areaNote">Drag the orange corner dots on the globe to resize, or type exact coordinates.</div>
+    </details>
+
+    <div id="status">Loading data…</div>
+
+    <div id="results" hidden>
+      <section>
+        <div class="filters">
+          <span class="seg unitSeg" role="group" aria-label="Count hotspots as">
+            <button data-v="vEq" class="on" aria-pressed="true">VIIRS <small>375 m</small></button><button data-v="mEq" aria-pressed="false">MODIS <small>1 km</small></button>
+          </span>
+          <span class="seg" id="viewSeg" role="group" aria-label="Table view">
+            <button data-v="count" class="on">Counts</button><button data-v="anom">Anomaly</button>
+          </span>
+          <span><label for="mo0">From</label> <select id="mo0" aria-label="Start month"></select> <select id="y0" aria-label="Start year"></select></span>
+          <span><label for="mo1">To</label> <select id="mo1" aria-label="End month"></select> <select id="y1" aria-label="End year"></select></span>
+          <span class="seg"><button id="rangeLast12" title="The last twelve complete months">Last 12 months</button><button id="rangeAll" title="The whole record">All</button></span>
+        </div>
+        <div class="note" id="modeNote"></div>
+      </section>
+
+      <section><div class="kpis" id="kpis"></div></section>
+
+      <section>
+        <h2 id="calTitle">Hotspots per month</h2>
+        <div class="card">
+          <div class="calwrap"><table class="cal" id="cal"></table></div>
+          <div class="ramp" id="ramp"></div>
+        </div>
+        <div class="note" id="calNote"></div>
+      </section>
+
+      <section>
+        <h2>Unusual years: difference from the average</h2>
+        <div class="card">
+          <div class="legend" id="anomLegend"></div>
+          <svg id="anomChart" viewBox="0 0 560 220" role="img" aria-label="Each year's hotspots as a percentage above or below the average"></svg>
+        </div>
+        <div class="note" id="anomNote"></div>
+      </section>
+
+      <section>
+        <h2>Monthly record</h2>
+        <div class="card">
+          <div class="legend" id="monthlyLegend"></div>
+          <svg id="monthlyChart" viewBox="0 0 560 220" role="img" aria-label="Hotspots per month over the whole record"></svg>
+        </div>
+        <div class="note" id="monthlyNote"></div>
+      </section>
+
+      <section>
+        <h2>Fire season: typical year against <span id="seasonYear"></span></h2>
+        <div class="card">
+          <div class="legend" id="seasonLegend"></div>
+          <svg id="seasonChart" viewBox="0 0 560 220" role="img" aria-label="Hotspots by month of the year"></svg>
+        </div>
+        <div class="note" id="seasonNote"></div>
+      </section>
+
+      <section>
+        <h2>Download</h2>
+        <div class="downloads">
+          <button id="dlTable">Monthly table (CSV)</button>
+          <button id="dlPoints">Hotspots in this search (CSV)</button>
+          <button id="dlPng">Calendar and charts (PNG)</button>
+        </div>
+        <div class="note" id="dlNote"></div>
+      </section>
+
+      <div class="note" id="sourceNote"></div>
+    </div>
+  </div>
+</aside>
+<div id="tip"></div>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
