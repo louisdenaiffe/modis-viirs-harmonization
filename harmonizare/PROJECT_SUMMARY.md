@@ -186,7 +186,10 @@ Everything the app needs is in `harmonizare/APP_DATA/` (instructions in `CITESTE
 | File | Content |
 |---|---|
 | `cells_monthly/final_{year}.parquet` | per cell × month × day/night: `n_eq`, `frp_eq` (MODIS scale), `n_veq`, `frp_veq` (VIIRS scale), intervals, source of each value |
-| `country_month.csv`, `region_month.csv` | aggregated tables with rank, typical error and confidence |
+| `country_month.csv`, `region_month.csv` | aggregated tables with rank, anomaly versus the historical median, typical error and confidence |
+| `country_season.csv`, `region_season.csv` | seasonal profile: normal level of each calendar month (median, mean, p10, p90) and its share of the year |
+| `country_year.csv`, `region_year.csv` | yearly totals and the rank of each year |
+| `country_trend.csv`, `region_trend.csv` | 2003–2025 trend in % per year with a significance test |
 | `cell_country.parquet` | country of each grid cell |
 | `accuracy_modis_scale.csv`, `accuracy_viirs_scale.csv` | error lookup by rectangle size and detection count |
 | `famous_fires.csv`, `fig_harmonization_summary.png`, `fig_detection_curve.png` | demo and pitch material |
@@ -247,3 +250,48 @@ Sources: https://www.earthdata.nasa.gov/data/projects/hls · https://hls.gsfc.na
 - *How do you know it is right?* Held-out years, a later independent period, per-country errors, simultaneous-overpass physics and the famous-fires test all agree.
 - *Where does it fail?* Night on small areas, low-fire areas, one-off extreme seasons. The app labels these as low confidence.
 - *What happens after 2025?* NOAA-20 and NOAA-21 carry the same instrument; the same method applies with one extra calibration step.
+
+---
+
+## 12. Status against the challenge text, and what to do next
+
+### 12.1 Checklist
+| What the challenge text asks for | Status |
+|---|---|
+| Harmonize so that "the sensor of origin no longer matters" | Done: one record; the source is kept only as a label |
+| Calendar of hotspot counts "from the early 2000s to the present" | Done to Dec 2025; **2026 is missing** |
+| "Which month and years had the highest fire activity" | Done: rank of every month (`*_month.csv`) and of every year (`*_year.csv`) |
+| "Compare the burning activity of the current month against the historical median" | Done: `median_*` and `anom_pct_*` columns |
+| "Which periods of the year see more fires" | Done: seasonal profile (`*_season.csv`) |
+| "Historical comparisons, including anomalies against multi-year averages" | Done: `mean_*`, `anom_pct_*` |
+| "Patterns, trends, and anomalies" | Done: `*_trend.csv` (global trend 2003–2025: −0.9% per year, significant) |
+| Select a region (draw on a map, or enter latitude/longitude) and a date range | App work; the cell data supports any rectangle |
+| Download analytics and visualizations | App work |
+| "Downloadable CSV of hot spots detected during a search" | **Open**: needs the individual detections (see 12.2) |
+| Accessible color ramps | App work |
+
+### 12.2 Open gaps
+1. **"To the present" / "current month".** The record ends in December 2025. For the demo this is defensible, but it is the gap a judge is most likely to notice.
+   - Minimum: say it in the pitch. New months go through the same factors; after November 2026 the input becomes NOAA-20, which needs one extra calibration step (NOAA-20 to Suomi NPP).
+   - Better: download the 2026 Suomi NPP detections from FIRMS (January to October) and run them through the same pipeline; the calendar then reaches October 2026.
+2. **CSV of hotspots for a search.** This means individual detections, not monthly cells. The raw FIRMS CSVs are on the team's disk; a fast Parquet copy can be rebuilt with `scripts/01_ingest.py` (about 10 minutes, ~9 GB). The app can serve either that file or the FIRMS CSVs directly.
+
+### 12.3 Advice for the app
+- **No modelling at run time.** Both scales are precomputed columns. The app reads the column for the chosen scale and sums the cells in the selected area. There is no ML model to load.
+- **Show the monthly total (day + night) by default.** Offer a night-only view only where the area has at least ~100 night detections a month; night-only values are the unreliable ones (example: China is +85% wrong at night but +2% on the day + night total).
+- **Show a confidence label from the number of detections in the selected area that month**: ≥ 1,000 high (~9% typical error), 100–999 medium (~14%), 10–99 low (~25%), below 10 no monthly number ("few fires", or show the annual total).
+- **Hide the "record month" badge below ~50 detections.** With tiny numbers a record is noise (Maui 2023 is a "record" with 17 detections).
+- **VIIRS scale, night, before 2012:** show numbers only for countries or regions, not for small rectangles.
+- **For points on the map, use the original FIRMS detections.** The harmonized files are for the calendar and the statistics.
+- **Smallest useful area:** one grid cell is ~28 km. In fire-prone regions a rectangle of 50–100 km usually has enough detections for a medium or high confidence; in Europe it often takes a country, or annual totals instead of monthly.
+- **"Top 5%" with 23 reference years means rank 1; "top 10%" means rank 1–2.**
+
+### 12.4 What we decided not to do, and why
+- **Level-2 swath products (cloud and coverage masks):** tens of GB per day and heavy processing; not needed for monthly values.
+- **Machine learning in the final record:** tested, lost on unseen regions.
+- **Cross-check against NASA's 750 m VIIRS fire product, and per-detection view-angle correction:** scientifically sound next steps, but the challenge text does not ask for them and they would not change the app.
+- **NOAA-20 / NOAA-21:** needed for data after November 2026; left out because the demo ends in 2025.
+- **Daily harmonized values:** not validated; monthly is what the calendar needs.
+
+### 12.5 Comparing with the other team model
+`harmonizare/BENCHMARK/` contains a common truth table (real VIIRS, 2018–2023), our MODIS-only predictions and one scoring script for both models. Rules: neither model may have seen the test years; predictions must come from MODIS only; both are scored on the same countries; decide on absolute and RMS errors, not on bias. Details in `BENCHMARK/BENCHMARK.md`.
