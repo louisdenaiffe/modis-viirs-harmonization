@@ -3,27 +3,57 @@
 the Fire Globe page reads. Needs numpy and pandas.
 
     python3 tools/build_world.py <folder with CSVs> <output folder> [coverage name]
+        --modis-scale <folder of final_YYYY.parquet>  [--viirs-scale <table.parquet>]
+
+The two conversion models of the team come in as tables on a 0.25 degree x month x day/night
+grid (see "The two scales" below); reading them needs pyarrow.
 
 Output layout (all little-endian binary, M = number of months since 2000-01):
   meta.json                 dates, month indexes, list of 10-degree blocks
-  coarse.bin                per block: MODIS count, VIIRS count, harmonized count, per month
-  blocks/<lat>_<lon>.bin    per 1-degree tile in the block: cell split k, ratios, monthly series
+  coarse.bin                per block and month: MODIS count, VIIRS count, VIIRS-scale value,
+                            MODIS-scale value
+  blocks/<lat>_<lon>.bin    per 1-degree tile in the block: cell split k and the same four
+                            monthly series
   tiles/<lat>_<lon>.bin     the hotspots of one 1-degree tile, 9 bytes each, grouped into
                             k x k cells; when k > 1 the file starts with a cell directory
-                            and per-cell monthly counts
-  heat0/<month>.bin         world fire map, 0.25 degree cells, one file per month
-  heat1/<lat>_<lon>.bin     detailed fire map, 0.05 degree cells, one file per block
+                            and per-cell monthly series (counts, and both scales as
+                            round(64 * sqrt(value)) in 16 bits)
+  factors/<lat>_<lon>.bin   per tile, the weight of one hotspot by 0.25 degree cell, month and
+                            kind of hotspot: used for hotspots read one by one along a
+                            selection's edge (n, then n sorted keys, then n weights)
+  heat0/<month>.bin         world fire map, 0.25 degree cells, one file per month, both scales
+  heat1/<lat>_<lon>.bin     detailed fire map, 0.05 degree cells, one file per block, both scales
 
-Harmonization: VIIRS is the reference. For every 1-degree tile and month of the year,
-ratio = VIIRS / MODIS hotspots over the months both sensors cover. Sparse tiles are pulled
-toward their 10-degree block's ratio, and blocks toward the global ratio (K pseudo-counts).
-A second ratio (VIIRS / Terra) is used before Aqua's first data in July 2002.
+The two scales. Every hotspot gets two weights, and everything the app shows is a sum of
+weights, so any selection adds up exactly.
+
+VIIRS scale ("what VIIRS would have counted"): a VIIRS hotspot weighs 1. A MODIS hotspot weighs 0
+when VIIRS was flying, and otherwise (before February 2012, and on VIIRS outage days):
+  - kept detections (type 0, confidence nominal or high): the --viirs-scale table gives the
+    VIIRS-equivalent count of the cell, month and day/night (Louis's model, glm_cell on
+    n_hotspots, made by scripts/export_app_table.py); it is shared equally between the kept
+    MODIS hotspots there;
+  - the other detections (low confidence, static sources), which that model leaves out, and any
+    month the table does not cover: the VIIRS / MODIS ratio of the 1-degree tile and month of the
+    year over the months both sensors cover, computed on the same kind of detections. Sparse
+    tiles are pulled toward their 10-degree block's ratio, and blocks toward the global ratio
+    (K pseudo-counts). A second ratio (VIIRS / Terra) is used before Aqua's first data in
+    July 2002.
+
+MODIS scale ("what MODIS Aqua would have counted"): the --modis-scale tables (Ianis's model,
+harmonizare/APP_DATA/cells_monthly) give the Aqua-equivalent count n_eq of every cell, month and
+day/night, and say which satellite it comes from: Terra (before July 2002), Aqua itself, or
+VIIRS (from 2022). n_eq is shared equally between that satellite's hotspots there; the other
+satellites weigh 0. For months after the last one in the tables, a VIIRS hotspot weighs the
+tile's n_eq / VIIRS ratio for that month of the year and day/night, measured on the tables'
+VIIRS-based months (same shrinkage); on VIIRS outage days Aqua hotspots count instead, as 1.
 
 VIIRS outages: on days when the VIIRS satellite sent little or no data (for example
 10-12 March 2026), the harmonized count of each affected 10-degree block uses that day's
-MODIS hotspots multiplied by the ratio, exactly as for the years before VIIRS. See
+MODIS hotspots with their VIIRS-scale weights, exactly as for the years before VIIRS. See
 find_gaps() below. Raw MODIS and VIIRS counts are never changed.
 """
+import argparse
 import json
 import os
 import shutil
@@ -38,6 +68,8 @@ import pandas as pd
 AQUA_START = (2002 - 2000) * 12 + 6      # 2002-07
 VIIRS_START = (2012 - 2000) * 12 + 1     # 2012-02, first full S-NPP month
 K = 20.0                                 # shrinkage strength, in MODIS detections
+KF = 100.0                               # same, in VIIRS detections (MODIS-scale fallback factors)
+VH_START = (2022 - 2000) * 12            # first month the MODIS-scale tables are VIIRS-based
 CELL_TARGET = 60000                      # aim for at most this many hotspots per cell
 HEAT0, HEAT1 = 0.25, 0.05                # fire-map cell sizes in degrees
 N0, N1 = 40, 200                         # cells per 10-degree block side at each size
@@ -46,10 +78,10 @@ EPOCH = np.datetime64("2000-01-01")
 REC = np.dtype([("la", "i1"), ("lo", "<i2"), ("lat", "<u2"), ("lon", "<u2"),
                 ("day", "<u2"), ("frp", "<u2"), ("fl", "u1")])              # 12 bytes, temporary
 PT = np.dtype([("lat", "<u2"), ("lon", "<u2"), ("day", "<u2"), ("frp", "<u2"), ("fl", "u1")])  # 9 bytes
-TILE = np.dtype([("la", "<i2"), ("lo", "<i2"), ("k", "<u2"), ("pad", "<u2"), ("n", "<u4"),
-                 ("rM", "<f4", 12), ("rT", "<f4", 12)])                     # 108 bytes
-H0 = np.dtype([("x", "<u2"), ("y", "<u2"), ("v", "<f4")])
-H1 = np.dtype([("x", "u1"), ("y", "u1"), ("v", "<u2")])
+TILE = np.dtype([("la", "<i2"), ("lo", "<i2"), ("k", "<u2"), ("pad", "<u2"), ("n", "<u4")])  # 12 bytes
+H0 = np.dtype([("x", "<u2"), ("y", "<u2"), ("v", "<f4"), ("w", "<f4")])     # v: VIIRS scale, w: MODIS scale
+H1 = np.dtype([("x", "u1"), ("y", "u1"), ("v", "<u2"), ("w", "<u2")])
+SRC_SAT = {"terra_backfill": 0, "aqua": 1, "viirs_harmonized": 2}           # MODIS-scale table sources
 COLS = {"latitude", "longitude", "acq_date", "satellite", "confidence", "frp", "daynight", "type"}
 SAT = {"Terra": 0, "T": 0, "Aqua": 1, "A": 1, "N": 2, "Suomi NPP": 2}
 CONF = {"l": 0, "low": 0, "n": 1, "nominal": 1, "h": 2, "high": 2}
@@ -162,23 +194,55 @@ def find_gaps(daycounts, block_ratio, viirs_first_day, viirs_last_day):
     return bad_days, gaps
 
 
+def kept_of(fl):
+    """Detections the VIIRS-scale model is fitted on: type 0, confidence nominal or high."""
+    return ((fl >> 3) & 3 == 0) & ((fl >> 5) & 3 >= 1)
+
+
+def read_table(frames, val, M, src=None):
+    """A model table (ix, iy, year, month, daynight, value) as arrays sorted by 10-degree block.
+    d = position of the cell, month and day/night inside the block: ((cell * M) + month) * 2 + night."""
+    import pandas as pd
+    df = pd.concat(frames, ignore_index=True)
+    m = (df["year"].to_numpy(np.int64) - 2000) * 12 + df["month"].to_numpy(np.int64) - 1
+    ix, iy = df["ix"].to_numpy(np.int64), df["iy"].to_numpy(np.int64)
+    ok = (m >= 0) & (m < M) & (ix >= 0) & (ix < 36 * N0) & (iy >= 0) & (iy < 18 * N0)
+    night = (df["daynight"].astype(str).to_numpy() == "N").astype(np.int64)
+    key = (iy // N0) * 36 + ix // N0
+    d = (((iy % N0) * N0 + ix % N0) * M + m) * 2 + night
+    s = df[src].map(SRC_SAT).fillna(-1).to_numpy(np.int8) if src else np.zeros(len(df), np.int8)
+    o = np.flatnonzero(ok)
+    o = o[np.argsort(key[o], kind="stable")]
+    return {"key": key[o], "d": d[o], "v": df[val].to_numpy(np.float32)[o], "s": s[o],
+            "first": int(m.min()), "last": int(m.max())}
+
+
+def table_rows(tab, key):
+    a, b = np.searchsorted(tab["key"], [key, key + 1])
+    return slice(a, b)
+
+
 def main():
-    if len(sys.argv) < 3:
-        sys.exit(__doc__)
-    src, out = sys.argv[1], sys.argv[2]
-    coverage = sys.argv[3] if len(sys.argv) > 3 else "custom"
+    ap = argparse.ArgumentParser(usage="build_world.py <folder with CSVs> <output folder> [coverage name] "
+                                       "--modis-scale <folder> [--viirs-scale <table.parquet>]")
+    ap.add_argument("src"), ap.add_argument("out"), ap.add_argument("coverage", nargs="?", default="custom")
+    ap.add_argument("--modis-scale", required=True, help="folder with Ianis's final_YYYY.parquet tables")
+    ap.add_argument("--viirs-scale", help="table made by scripts/export_app_table.py")
+    ap.add_argument("--jobs", type=int, default=min(8, os.cpu_count() or 4))
+    args = ap.parse_args()
+    src, out, coverage = args.src, args.out, args.coverage
     tmp = os.path.join(out, "_tmp")
-    for d in ("_tmp", "tiles", "blocks", "heat0", "heat1", "heat"):
+    for d in ("_tmp", "tiles", "blocks", "factors", "heat0", "heat1", "heat"):
         shutil.rmtree(os.path.join(out, d), ignore_errors=True)
-    for d in ("_tmp", "tiles", "blocks", "heat0", "heat1"):
+    for d in ("_tmp", "tiles", "blocks", "factors", "heat0", "heat1"):
         os.makedirs(os.path.join(out, d))
     t0 = time.time()
 
     # ---- pass 1: read every CSV (in parallel) into per-block temporary files ----
-    files = sorted(os.path.join(d, f) for d, _, fs in os.walk(src) for f in fs if f.lower().endswith(".csv"))
+    files = sorted(os.path.join(d, f) for d, _, fs in os.walk(src, followlinks=True) for f in fs if f.lower().endswith(".csv"))
     files.sort(key=os.path.getsize, reverse=True)
     total, dmin, dmax, vmax = 0, 65535, 0, 0
-    with Pool(4) as pool:
+    with Pool(args.jobs) as pool:
         for i, (n, a, b, v) in enumerate(pool.imap_unordered(parse_file, [(f, tmp) for f in files], chunksize=4)):
             total += n
             dmin, dmax, vmax = min(dmin, a), max(dmax, b), max(vmax, v)
@@ -197,58 +261,114 @@ def main():
     overlap_end = min(full(vmax), full(dmax)) if vmax else -1
     keys = sorted({int(f.split(".")[0]) for f in os.listdir(tmp)})
 
+    # ---- the two model tables ----
+    import pandas as pd
+    mfiles = sorted(f for f in os.listdir(args.modis_scale) if f.startswith("final_") and f.endswith(".parquet"))
+    if not mfiles:
+        sys.exit(f"no final_YYYY.parquet tables in {args.modis_scale}")
+    cols = ["ix", "iy", "year", "month", "daynight", "n_eq", "source"]
+    frames = [pd.read_parquet(os.path.join(args.modis_scale, f), columns=cols) for f in mfiles]
+    TM = read_table([f[f["n_eq"] > 0] for f in frames], "n_eq", M, "source")
+    del frames
+    tab_end = min(TM["last"], M - 1)          # months after it use the fallback factors
+    TV = None
+    if args.viirs_scale:
+        TV = read_table([pd.read_parquet(args.viirs_scale, columns=["ix", "iy", "year", "month", "daynight", "n_veq"])],
+                        "n_veq", M)
+    else:
+        print("no --viirs-scale table: the VIIRS scale uses the tile ratios only", flush=True)
+    print(f"tables read in {time.time() - t0:.0f}s: MODIS scale {len(TM['d']):,} rows (months {TM['first']}-{TM['last']})"
+          + (f", VIIRS scale {len(TV['d']):,} rows (months {TV['first']}-{TV['last']})" if TV else ""), flush=True)
+
     # ---- pass 2a: monthly counts per tile and satellite, needed for the ratios ----
-    counts, daycounts = {}, {}
+    counts, counts_r, daycounts, vh = {}, {}, {}, {}
     D = dmax + 1
     for key in keys:
         rec = load_block(tmp, key)
         bla, blo = (key // 36 - 9) * 10, (key % 36 - 18) * 10
-        t = (rec["la"].astype(np.int32) - bla) * 10 + (rec["lo"].astype(np.int32) - blo)
-        idx = (t * 3 + (rec["fl"] & 3)) * M + month_of[rec["day"]]
+        t = (rec["la"].astype(np.int64) - bla) * 10 + (rec["lo"].astype(np.int64) - blo)
+        sat, mo = rec["fl"] & 3, month_of[rec["day"]].astype(np.int64)
+        idx = (t * 3 + sat) * M + mo
         counts[key] = np.bincount(idx, minlength=100 * 3 * M).reshape(100, 3, M)
-        daycounts[key] = np.bincount(rec["day"].astype(np.int64) * 2 + ((rec["fl"] & 3) == 2),
+        # the same counts for the detections the VIIRS-scale model leaves out
+        counts_r[key] = np.bincount(idx[~kept_of(rec["fl"])], minlength=100 * 3 * M).reshape(100, 3, M)
+        daycounts[key] = np.bincount(rec["day"].astype(np.int64) * 2 + (sat == 2),
                                      minlength=2 * D).reshape(D, 2)
+        # VIIRS hotspots by tile, day/night and month of year over the tables' VIIRS-based months
+        v = (sat == 2) & (mo >= VH_START) & (mo <= tab_end)
+        vh[key] = np.bincount((t[v] * 2 + (rec["fl"][v] >> 2 & 1)) * 12 + mo[v] % 12,
+                              minlength=100 * 2 * 12).reshape(100, 2, 12)
     print(f"pass 2a done in {time.time() - t0:.0f}s", flush=True)
 
     def ratios(c):                       # c: (..., 3, M) -> VIIRS, MODIS, Terra sums by month of year
         return (by_moy(c[..., 2, :], VIIRS_START, overlap_end),
                 by_moy(c[..., 0, :] + c[..., 1, :], VIIRS_START, overlap_end),
                 by_moy(c[..., 0, :], VIIRS_START, overlap_end))
-    gv = gm = gt = 0
-    for c in counts.values():
-        v, m, t_ = ratios(c.sum(0))
-        gv, gm, gt = gv + v, gm + m, gt + t_
     safe = lambda a, b, alt: np.where(b > 0, a / np.maximum(b, 1), alt)
-    g_rm = safe(gv, gm, gv.sum() / max(gm.sum(), 1))
-    g_rt = safe(gv, gt, gv.sum() / max(gt.sum(), 1))
+
+    def ratio_set(cnt):
+        """Global ratios, and a function giving a block's tile ratios (VIIRS/MODIS, VIIRS/Terra)."""
+        gv = gm = gt = 0
+        for c in cnt.values():
+            v, m, t_ = ratios(c.sum(0))
+            gv, gm, gt = gv + v, gm + m, gt + t_
+        g_rm = safe(gv, gm, gv.sum() / max(gm.sum(), 1))
+        g_rt = safe(gv, gt, gv.sum() / max(gt.sum(), 1))
+
+        def tiles(key):
+            c = cnt[key]
+            bv, bm, bt = ratios(c.sum(0))
+            b_rm, b_rt = (bv + K * g_rm) / (bm + K), (bv + K * g_rt) / (bt + K)
+            tv, tm, tt = ratios(c)
+            return ((tv + K * b_rm) / (tm + K)).astype(np.float32), ((tv + K * b_rt) / (tt + K)).astype(np.float32), b_rm
+        return g_rm, g_rt, tiles
+    g_rm, g_rt, tiles_all = ratio_set(counts)        # every detection
+    _, _, tiles_rest = ratio_set(counts_r)           # only those the VIIRS-scale model leaves out
+    del counts_r
+
+    # ---- MODIS scale after the tables' last month: n_eq / VIIRS per tile, month of year, day/night ----
+    fb_num, g_num, g_den = {}, np.zeros((2, 12)), np.zeros((2, 12))
+    for key in keys:
+        r = table_rows(TM, key)
+        d, v = TM["d"][r], TM["v"][r]
+        mo = (d // 2) % M
+        sel = (TM["s"][r] == 2) & (mo >= VH_START)
+        d, v, mo = d[sel], v[sel], mo[sel]
+        c16 = d // (2 * M)
+        tl = (c16 // N0 // 4) * 10 + (c16 % N0) // 4
+        fb_num[key] = np.bincount((tl * 2 + d % 2) * 12 + mo % 12, weights=v, minlength=2400).reshape(100, 2, 12)
+        g_num += fb_num[key].sum(0)
+        g_den += vh[key].sum(0)
+    g_f = safe(g_num, g_den, g_num.sum() / max(g_den.sum(), 1))
+
+    def fb_tiles(key):
+        b = (fb_num[key].sum(0) + KF * g_f) / (vh[key].sum(0) + KF)
+        return ((fb_num[key] + KF * b) / (vh[key] + KF)).astype(np.float32)      # (100, 2, 12)
 
     # ---- VIIRS outages: which blocks are missing VIIRS data on which days ----
-    b_ratio = {}
-    for key, c in counts.items():
-        bv, bm, _ = ratios(c.sum(0))
-        b_ratio[key] = (bv + K * g_rm) / (bm + K)
+    b_ratio = {key: tiles_all(key)[2] for key in keys}
     first_vday = int(np.argmax(month_of >= VIIRS_START))
     last_vday = int(np.flatnonzero(month_of <= viirs_end)[-1]) if viirs_end >= 0 else -1
     bad_days, gaps = find_gaps(daycounts, b_ratio, first_vday, last_vday)
     del daycounts
     gap_months = sorted({int(month_of[d]) for ds in gaps.values() for d in ds})
-    gi_of = np.full(M, -1, np.int64)
-    gi_of[gap_months] = np.arange(len(gap_months))
-    G = len(gap_months)
     print(f"VIIRS outages: {len(bad_days)} days, {sum(len(v) for v in gaps.values())} block-days filled with MODIS", flush=True)
 
-    # ---- pass 2b: write tiles, block indexes and fire-map grids ----
+    # ---- pass 2b: weights, tiles, block indexes and fire-map grids ----
     coarse, blocks_meta = [], []
     heat0 = [[] for _ in range(M)]
     in_v_month = (np.arange(M) >= VIIRS_START) & (np.arange(M) <= viirs_end)
+    Y = (M + 11) // 12
+    rep = {k: np.zeros(Y) for k in ("terra", "aqua", "viirs", "viirs_scale", "modis_scale", "table_v", "lost_v",
+                                    "table_m", "lost_m", "modis_from_table", "modis_from_ratio")}
+    size = N0 * N0 * M * 2
+    enc = lambda cs: np.minimum(np.rint(64 * np.sqrt(cs)), 65535).astype("<u2").tobytes()
     for bi, key in enumerate(keys):
         bla, blo = (key // 36 - 9) * 10, (key % 36 - 18) * 10
         c = counts[key]
-        bv, bm, bt = ratios(c.sum(0))
-        b_rm, b_rt = (bv + K * g_rm) / (bm + K), (bv + K * g_rt) / (bt + K)
-        tv, tm, tt = ratios(c)
-        r_m = ((tv + K * b_rm) / (tm + K)).astype(np.float32)        # (100, 12)
-        r_t = ((tv + K * b_rt) / (tt + K)).astype(np.float32)
+        r_m, r_t, _ = tiles_all(key)                                  # (100, 12)
+        q_m, q_t, _ = tiles_rest(key)
+        f_fb = fb_tiles(key)
         n_tile = c.sum((1, 2))
         k_tile = np.ones(100, np.uint32)
         for k in (2, 4, 8, 16):
@@ -261,19 +381,81 @@ def main():
         order = np.argsort(t * 256 + cell, kind="stable")
         rec, t, cell = rec[order], t[order], cell[order]
         del order, kk
-        m = month_of[rec["day"]]
-        sat = rec["fl"] & 3
+        m = month_of[rec["day"]].astype(np.int64)
+        sat = (rec["fl"] & 3).astype(np.int64)
+        night = (rec["fl"] >> 2 & 1).astype(np.int64)
+        kept = kept_of(rec["fl"])
+        is_mod = sat < 2
         moy = m % 12
-        gapday = np.zeros(D + 1, bool)
+        gapday, gapmonth = np.zeros(D + 1, bool), np.zeros(M, bool)
         if key in gaps:
             gapday[gaps[key]] = True
+            gapmonth[month_of[gaps[key]]] = True
         gap = gapday[rec["day"]]
         era = in_v_month[m] & ~gap          # VIIRS-era months, except days VIIRS was missing here
-        w = np.where(sat == 2, era, np.where(era, 0, np.where(m < AQUA_START, r_t[t, moy], r_m[t, moy]))).astype(np.float32)
+        lonf = (rec["lo"].astype(np.float32) - blo) + rec["lon"] / np.float32(65535)
+        latf = (rec["la"].astype(np.float32) - bla) + rec["lat"] / np.float32(65535)
+        # 0.25 degree cell: quarter of the tile, from the stored 16-bit position (the app does the same)
+        x4, y4 = (rec["lon"].astype(np.int64) * 4) >> 16, (rec["lat"].astype(np.int64) * 4) >> 16
+        x0 = (rec["lo"].astype(np.int64) - blo) * 4 + x4
+        y0 = (rec["la"].astype(np.int64) - bla) * 4 + y4
+        d = ((y0 * N0 + x0) * M + m) * 2 + night          # 0.25 degree cell, month, day/night
+
+        # VIIRS scale. pv = what a MODIS hotspot weighs when VIIRS is not there.
+        ratio = np.where(m < AQUA_START, np.where(kept, r_t[t, moy], q_t[t, moy]), np.where(kept, r_m[t, moy], q_m[t, moy]))
+        from_tab = np.zeros(len(rec), bool)
+        pv = ratio
+        if TV is not None:
+            tv = np.full(size, np.nan, np.float32)
+            r = table_rows(TV, key)
+            tv[TV["d"][r]] = TV["v"][r]
+            nk = np.bincount(d[is_mod & kept], minlength=size)
+            from_tab = is_mod & kept & np.isfinite(tv[d])
+            pv = np.where(from_tab, tv[d] / np.maximum(nk[d], 1), ratio)
+            pre = (TV["d"][r] // 2) % M < VIIRS_START
+            yr = ((TV["d"][r] // 2) % M // 12)[pre]
+            rep["table_v"] += np.bincount(yr, weights=TV["v"][r][pre], minlength=Y)
+            rep["lost_v"] += np.bincount(yr, weights=(TV["v"][r] * (nk[TV["d"][r]] == 0))[pre], minlength=Y)
+            del tv, nk
+        pv = np.where(is_mod, pv, 0)
+        w = np.where(sat == 2, era, np.where(era, 0, pv)).astype(np.float32)
+
+        # MODIS scale. wm0 = the weight before the outage-day rule of the months after the tables.
+        tm_, ts = np.zeros(size, np.float32), np.full(size, -1, np.int8)
+        r = table_rows(TM, key)
+        tm_[TM["d"][r]], ts[TM["d"][r]] = TM["v"][r], TM["s"][r]
+        ns = np.bincount(d * 3 + sat, minlength=size * 3)
+        wm0 = np.where(ts[d] == sat, tm_[d] / np.maximum(ns[d * 3 + sat], 1), 0)
+        late = m > tab_end
+        wm0 = np.where(late, np.where(sat == 2, f_fb[t, night, moy], 0), wm0)
+        wm = np.where(late & gap, sat == 1, wm0).astype(np.float32)
+        yr = (TM["d"][r] // 2) % M // 12
+        rep["table_m"] += np.bincount(yr, weights=TM["v"][r], minlength=Y)
+        rep["lost_m"] += np.bincount(yr, weights=TM["v"][r] * (ns[TM["d"][r] * 3 + TM["s"][r]] == 0), minlength=Y)
+        del tm_, ts, ns
+        yr = m // 12
+        for name, ww in (("terra", sat == 0), ("aqua", sat == 1), ("viirs", sat == 2), ("viirs_scale", w),
+                         ("modis_scale", wm), ("modis_from_table", w * from_tab), ("modis_from_ratio", w * (is_mod & ~from_tab))):
+            rep[name] += np.bincount(yr, weights=ww, minlength=Y)
 
         mod = c[:, 0, :] + c[:, 1, :]
         vii = c[:, 2, :]
         harm = np.bincount(t * M + m, weights=w, minlength=100 * M).reshape(100, M)
+        harm_m = np.bincount(t * M + m, weights=wm, minlength=100 * M).reshape(100, M)
+        # Weight of one hotspot by tile, 0.25 degree cell, month and kind, for hotspots the app
+        # reads one by one along a selection's edge. Kinds 0-3: a MODIS hotspot on the VIIRS scale
+        # when VIIRS is not there (kept * 2 + night); kinds 4-9: on the MODIS scale
+        # (4 + satellite * 2 + night). Every hotspot of a kind in a cell and month weighs the same.
+        fk = ((y4 * 4 + x4) * M + m) * 16
+        sel_v = is_mod & (pv > 0) & (~in_v_month[m] | gapmonth[m])
+        sel_m = wm0 > 0
+        big = np.r_[(t[sel_v].astype(np.int64) << 32) + fk[sel_v] + kept[sel_v] * 2 + night[sel_v],
+                    (t[sel_m].astype(np.int64) << 32) + fk[sel_m] + 4 + sat[sel_m] * 2 + night[sel_m]]
+        big, first = np.unique(big, return_index=True)
+        fval = np.r_[pv[sel_v], wm0[sel_m]][first].astype("<f4")
+        fcut = np.searchsorted(big >> 32, np.arange(101))
+        fkey = (big & 0xFFFFFFFF).astype("<u4")
+        del big, first, sel_v, sel_m, fk
         present = np.flatnonzero(n_tile)
         bounds = np.searchsorted(t, np.r_[present, 100])
         trec = np.zeros(len(present), TILE)
@@ -286,52 +468,55 @@ def main():
                 pts[f] = rec[f][a:b]
             with open(os.path.join(out, "tiles", f"{la}_{lo}.bin"), "wb") as fh:
                 if k > 1:
-                    cc, mm, is_mod = cell[a:b], m[a:b], sat[a:b] < 2
+                    cc, mm, modis = cell[a:b], m[a:b], is_mod[a:b]
                     fh.write(np.r_[0, np.cumsum(np.bincount(cc, minlength=k * k))].astype("<u4").tobytes())
-                    for sel in (is_mod, ~is_mod):
+                    for sel in (modis, ~modis):
                         cs = np.bincount(cc[sel] * M + mm[sel], minlength=k * k * M)
                         fh.write(np.minimum(cs, 65535).astype("<u2").tobytes())
-                    if G:   # per cell and outage month: VIIRS, then MODIS hotspots on outage days
-                        gg = gap[a:b] & (gi_of[mm] >= 0)
-                        for sel in (gg & ~is_mod, gg & is_mod):
-                            cs = np.bincount(cc[sel] * G + gi_of[mm[sel]], minlength=k * k * G)
-                            fh.write(np.minimum(cs, 65535).astype("<u2").tobytes())
+                    for ww in (w[a:b], wm[a:b]):   # both scales per cell and month, as round(64 * sqrt(value))
+                        fh.write(enc(np.bincount(cc * M + mm, weights=ww, minlength=k * k * M)))
                 fh.write(pts.tobytes())
-            trec[j] = (la, lo, k, 0, n_tile[ti], r_m[ti], r_t[ti])
-            series += mod[ti].astype("<u4").tobytes() + vii[ti].astype("<u4").tobytes() + harm[ti].astype("<f4").tobytes()
+            trec[j] = (la, lo, k, 0, n_tile[ti])
+            series += (mod[ti].astype("<u4").tobytes() + vii[ti].astype("<u4").tobytes()
+                       + harm[ti].astype("<f4").tobytes() + harm_m[ti].astype("<f4").tobytes())
+            with open(os.path.join(out, "factors", f"{la}_{lo}.bin"), "wb") as fh:
+                fa, fb = fcut[ti], fcut[ti + 1]
+                fh.write(np.array([fb - fa], "<u4").tobytes() + fkey[fa:fb].tobytes() + fval[fa:fb].tobytes())
         with open(os.path.join(out, "blocks", f"{bla}_{blo}.bin"), "wb") as fh:
             fh.write(np.array([len(present)], "<u4").tobytes() + trec.tobytes() + bytes(series))
-        coarse.append(mod.sum(0).astype("<u4").tobytes() + vii.sum(0).astype("<u4").tobytes() + harm.sum(0).astype("<f4").tobytes())
+        coarse.append(mod.sum(0).astype("<u4").tobytes() + vii.sum(0).astype("<u4").tobytes()
+                      + harm.sum(0).astype("<f4").tobytes() + harm_m.sum(0).astype("<f4").tobytes())
         blocks_meta.append([bla, blo])
 
-        # fire-map grids (harmonized counts)
-        lonf = (rec["lo"].astype(np.float32) - blo) + rec["lon"] / np.float32(65535)
-        latf = (rec["la"].astype(np.float32) - bla) + rec["lat"] / np.float32(65535)
-        keep = w > 0
-        lonf, latf, mk, wk = lonf[keep], latf[keep], m[keep].astype(np.int64), w[keep]
-        x0 = np.minimum((lonf / HEAT0).astype(np.int64), N0 - 1)
-        y0 = np.minimum((latf / HEAT0).astype(np.int64), N0 - 1)
-        g0 = np.bincount((mk * N0 + y0) * N0 + x0, weights=wk, minlength=M * N0 * N0).reshape(M, N0 * N0)
-        for mi in np.flatnonzero(g0.any(1)):
-            nz = np.flatnonzero(g0[mi])
+        # fire-map grids, both scales
+        keep = (w > 0) | (wm > 0)
+        lonf, latf, mk, wk, wmk = lonf[keep], latf[keep], m[keep], w[keep], wm[keep]
+        i0 = (mk * N0 + y0[keep]) * N0 + x0[keep]
+        g0 = np.bincount(i0, weights=wk, minlength=M * N0 * N0).reshape(M, N0 * N0)
+        g0m = np.bincount(i0, weights=wmk, minlength=M * N0 * N0).reshape(M, N0 * N0)
+        for mi in np.flatnonzero(g0.any(1) | g0m.any(1)):
+            nz = np.flatnonzero((g0[mi] > 0) | (g0m[mi] > 0))
             h = np.empty(len(nz), H0)
             h["x"] = nz % N0 + (blo + 180) * 4
             h["y"] = nz // N0 + (bla + 90) * 4
-            h["v"] = g0[mi, nz]
+            h["v"], h["w"] = g0[mi, nz], g0m[mi, nz]
             heat0[mi].append(h)
         x1 = np.minimum((lonf / HEAT1).astype(np.int64), N1 - 1)
         y1 = np.minimum((latf / HEAT1).astype(np.int64), N1 - 1)
-        g1 = np.bincount((mk * N1 + y1) * N1 + x1, weights=wk, minlength=M * N1 * N1)
-        nz = np.flatnonzero(g1)
+        i1 = (mk * N1 + y1) * N1 + x1
+        g1 = np.bincount(i1, weights=wk, minlength=M * N1 * N1)
+        g1m = np.bincount(i1, weights=wmk, minlength=M * N1 * N1)
+        nz = np.flatnonzero((g1 > 0) | (g1m > 0))
         h = np.empty(len(nz), H1)
         cellidx = nz % (N1 * N1)
         h["x"], h["y"] = cellidx % N1, cellidx // N1
-        h["v"] = np.clip(np.rint(g1[nz] * 8), 1, 65535)
+        for name, gg in (("v", g1[nz]), ("w", g1m[nz])):       # eighths of a hotspot; 0 only when there is none
+            h[name] = np.where(gg > 0, np.clip(np.rint(gg * 8), 1, 65535), 0)
         offs = np.searchsorted(nz // (N1 * N1), np.arange(M + 1)).astype("<u4")
         with open(os.path.join(out, "heat1", f"{bla}_{blo}.bin"), "wb") as fh:
             fh.write(offs.tobytes() + h.tobytes())
 
-        del rec, t, cell, m, sat, w, g0, g1, gap
+        del rec, t, cell, m, sat, w, wm, wm0, pv, g0, g0m, g1, g1m, gap, d
         for f in os.listdir(tmp):
             if f.split(".")[0] == str(key):
                 os.remove(os.path.join(tmp, f))
@@ -345,13 +530,13 @@ def main():
             if parts:
                 fh.write(np.concatenate(parts).tobytes())
     shutil.rmtree(tmp, ignore_errors=True)
-    for old in ("index.json",):
+    for old in ("index.json", "countries.bin"):      # countries.bin must be recomputed (README, step 3)
         if os.path.exists(os.path.join(out, old)):
             os.remove(os.path.join(out, old))
 
     iso = lambda day: str(EPOCH + int(day))
     meta = {
-        "version": 2, "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "version": 3, "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "coverage": coverage, "hotspots": int(total), "months": M,
         "firstDate": iso(dmin), "lastDate": iso(dmax),
         "aquaStart": AQUA_START, "viirsStart": VIIRS_START, "viirsEnd": viirs_end,
@@ -359,17 +544,28 @@ def main():
         "heat0": HEAT0, "heat1": HEAT1,
         "global": {"rM": [round(float(x), 4) for x in g_rm], "rT": [round(float(x), 4) for x in g_rt]},
         "blocks": blocks_meta,
-        # VIIRS outages filled with converted MODIS: the months concerned (tile files carry
-        # extra per-cell counts for these) and, per block, the days filled.
+        # The model tables behind the two scales. Months after modisScale.last use the fallback
+        # factors; from modisScale.viirsFrom the MODIS scale is converted VIIRS.
+        "viirsScale": {"table": bool(TV), "last": TV["last"] if TV else -1},
+        "modisScale": {"first": TM["first"], "last": tab_end, "viirsFrom": VH_START},
+        # VIIRS outages filled with converted MODIS: per block, the days filled.
         "gapMonths": gap_months,
         "gapDays": [iso(d) for d in bad_days],
         "gaps": {f"{(k // 36 - 9) * 10}_{(k % 36 - 18) * 10}": [int(d) for d in v] for k, v in gaps.items()},
     }
     with open(os.path.join(out, "meta.json"), "w") as fh:
         json.dump(meta, fh, separators=(",", ":"))
+    # Yearly world totals, to check the build (not read by the app).
+    with open(os.path.join(out, "build_report.csv"), "w") as fh:
+        fh.write("year," + ",".join(rep) + "\n")
+        for y in range(Y):
+            fh.write(f"{2000 + y}," + ",".join(f"{rep[k][y]:.0f}" for k in rep) + "\n")
     print(f"\n{total:,} hotspots, {len(keys)} blocks, {time.time() - t0:.0f}s")
     print(f"dates {meta['firstDate']} to {meta['lastDate']}; overlap months {VIIRS_START}-{overlap_end}")
     print("global VIIRS/MODIS ratio by month:", " ".join(f"{x:.2f}" for x in g_rm))
+    tv, tm = rep["table_v"].sum(), rep["table_m"].sum()
+    print(f"VIIRS-scale table before 2012: {tv:,.0f}, of which {rep['lost_v'].sum():,.0f} in cells where this build has no kept MODIS hotspot")
+    print(f"MODIS-scale tables: {tm:,.0f}, of which {rep['lost_m'].sum():,.0f} in cells where this build has no hotspot of the source satellite")
 
 
 if __name__ == "__main__":

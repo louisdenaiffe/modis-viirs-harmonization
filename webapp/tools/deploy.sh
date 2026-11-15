@@ -16,13 +16,13 @@ mkdir -p "$SITE"
 cp "$APP/index.html" "$APP/app.js" "$APP/icon.svg" "$SITE/"
 rsync -a "$APP/vendor" "$APP/geo" "$SITE/"
 mkdir -p "$SITE/data"
-for item in meta.json coarse.bin countries.bin blocks tiles heat0 heat1; do
+for item in meta.json coarse.bin countries.bin blocks factors tiles heat0 heat1; do
   [ -e "$APP/data/$item" ] || continue
   rsync -a --link-dest="$APP/data/" "$APP/data/$item" "$SITE/data/"
 done
 # Gzip copies of the files the app reads whole (see fetchWhole in app.js): about 3x smaller.
 # -n leaves out the time stamp, so unchanged files stay identical and are not uploaded again.
-for f in "$SITE/data/coarse.bin" "$SITE/data/countries.bin" "$SITE"/data/heat0/*.bin; do
+for f in "$SITE/data/coarse.bin" "$SITE/data/countries.bin" "$SITE"/data/heat0/*.bin "$SITE"/data/blocks/*.bin; do
   [ -e "$f" ] && gzip -9 -n -c "$f" > "$f.gz"
 done
 echo "Staged $(find "$SITE" -type f | wc -l | tr -d ' ') files ($(du -sh "$SITE" | cut -f1)) in $SITE"
