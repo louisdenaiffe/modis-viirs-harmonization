@@ -162,6 +162,9 @@ VIIRS-scale / MODIS-scale ratio of a country can differ by 10 to 15% between 200
 - **Charts:** unusual years, monthly record, fire season with its critical period (table in
   section 11).
 - The date range is chosen month by month (From / To), or with **Last 12 months** / **All**.
+- **Unfinished month left out:** when the newest data stops in the middle of a month (FIRMS
+  data for November 2026 runs to the 14th), that month is hidden everywhere (map, table,
+  charts, figures, downloads) until it is complete; the record ends with the last full month.
 
 ### 6. Downloads (`app.js`)
 - **Monthly table (CSV):** original MODIS, original VIIRS, VIIRS-equivalent and MODIS Aqua-equivalent value for every month, and where each comes from.

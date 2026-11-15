@@ -600,8 +600,13 @@ const ready = (async () => {
   const [ly, lm, ld] = ix.lastDate.split('-').map(Number);
   ix.firstMonth = (fy - 2000) * 12 + fm - 1;
   ix.lastMonth = M - 1;
-  // If the newest data stops mid-month, that month is flagged and kept out of the statistics.
-  ix.partialMonth = ld < new Date(Date.UTC(ly, lm, 0)).getUTCDate() ? ix.lastMonth : -1;
+  ix.partialMonth = -1;
+  // If the newest data stops mid-month, that month is not shown anywhere (map, table, charts,
+  // downloads) until it is complete: the record ends with the last complete month.
+  if (ld < new Date(Date.UTC(ly, lm, 0)).getUTCDate() && ix.lastMonth > ix.firstMonth) {
+    ix.lastMonth--;
+    ix.lastDate = new Date(Date.UTC(ly, lm - 1, 0)).toISOString().slice(0, 10);
+  }
 })().catch(e => { data.error = e; });
 
 // Fetch only bytes [start, end) of a file. Falls back to the whole file if the server
